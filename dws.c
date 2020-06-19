@@ -41,10 +41,12 @@ static const char HANDSHAKE_TEMPLATE[] =
 
 static const char B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+static char msg[] = "Hey dude!";
+
 /*
  * This is the dumbest 16-byte base64 data generator.
  */
-void
+static void
 dumb_key(char *out)
 {
 	int i, r;
@@ -60,12 +62,109 @@ dumb_key(char *out)
 	out[24] = '\0';
 }
 
+static void
+dumb_mask(int8_t *mask)
+{
+	uint32_t r;
+	r = arc4random();
+	mask[0] = r >> 24;
+	mask[1] = (r & 0x00FF0000) >> 16;
+	mask[2] = (r & 0x0000FF00) >> 8;
+	mask[3] = (r & 0x000000FF);
+}
+
+/*
+ * Frame some data for a crime it did not commit.
+ *
+ * Assumptions:
+ *   - sending data as binary frames
+ *   - all data is sent in 1 frame...simple, but no splitting/chunking
+ *
+ * Parameters:
+ *   - out: pointer to a buffer to write the frame data to
+ *   - out_len: size of the out buffer to make sure we don't exceed it,
+ *              should include the null byte at the end!
+ *   - data: pointer to the binary data payload to frame
+ *   - len: length of the binary payload (note that you probably don't
+ *          want't to include any null terminator)
+ *
+ * Returns:
+ *   - size of the frame in bytes
+ *
+ * For reference, this is what frames look like:
+ *
+ *     0                   1                   2                   3
+ *     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *    +-+-+-+-+-------+-+-------------+-------------------------------+
+ *    |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
+ *    |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
+ *    |N|V|V|V|       |S|             |   (if payload len==126/127)   |
+ *    | |1|2|3|       |K|             |                               |
+ *    +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
+ *    |     Extended payload length continued, if payload len == 127  |
+ *    + - - - - - - - - - - - - - - - +-------------------------------+
+ *    |                               |Masking-key, if MASK set to 1  |
+ *    +-------------------------------+-------------------------------+
+ 8    | Masking-key (continued)       |          Payload Data         |
+ *    +-------------------------------- - - - - - - - - - - - - - - - +
+ *    :                     Payload Data continued ...                :
+ *    + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
+ *    |                     Payload Data continued ...                |
+ *    +---------------------------------------------------------------+
+ */
+size_t
+frame_it(uint8_t *out, size_t out_len, char *data, size_t len)
+{
+	int idx = 0;
+	size_t i;
+	int8_t mask[4];
+
+	// Just a quick safety check...
+	if (len > out_len || len > (1 << 24))
+		errx(1, "frame_it");
+
+	memset(mask, 0, sizeof(mask));
+	dumb_mask(mask);
+
+	// We always set the same first 8 bits w/ binary frame opcode
+	out[0] = 0x82;
+
+	if (len < 126) {
+		printf("XXX trivial, len : %lu\n", len);
+		// the trivial 7 bit payload len case
+		out[1] = 0x80 + (uint8_t) len;
+		printf("xxxxx: 0x%x\n", out[1]);
+		idx = 1;
+	} else {
+		// the 7+16 bits payload len case
+		out[1] = (char) 0x80 + 126;
+
+		// payload length in network byte order
+		out[2] = len >> 8;
+		out[3] = len & 0x00FF;
+		idx = 3;
+	}
+
+	out[++idx] = mask[0];
+	out[++idx] = mask[1];
+	out[++idx] = mask[2];
+	out[++idx] = mask[3];
+
+	for (i = 0; i < len; i++) {
+		out[++idx] = data[i] ^ mask[i % 4];
+	}
+
+	out[++idx] = '\0';
+	return idx;
+}
+
+
 int
 main()
 {
 	int ret, s;
 	char key[25];
-	char buf[1024];
+	uint8_t buf[1024];
 	char *hostname = "localhost";
 	size_t len;
 
@@ -117,55 +216,26 @@ main()
 	if (memcmp(server_handshake, buf, sizeof(server_handshake) - 1))
 		err(5, "not ok?");
 
-/* Via RFC-6455, a frame looks like:
-
-      0                   1                   2                   3
-      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-     +-+-+-+-+-------+-+-------------+-------------------------------+
-     |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
-     |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
-     |N|V|V|V|       |S|             |   (if payload len==126/127)   |
-     | |1|2|3|       |K|             |                               |
-     +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
-     |     Extended payload length continued, if payload len == 127  |
-     + - - - - - - - - - - - - - - - +-------------------------------+
-     |                               |Masking-key, if MASK set to 1  |
-     +-------------------------------+-------------------------------+
-     | Masking-key (continued)       |          Payload Data         |
-     +-------------------------------- - - - - - - - - - - - - - - - +
-     :                     Payload Data continued ...                :
-     + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
-     |                     Payload Data continued ...                |
-     +---------------------------------------------------------------+
-*/
-	memset(buf, 0, sizeof(buf));
-	buf[0] = 0x82;
-	buf[1] = 0x87;
-	// dumb mask
-	buf[2] = 0xff;
-	buf[3] = 0xff;
-	buf[4] = 0xff;
-	buf[5] = 0xff;
-	buf[6] = 'H' ^ 0xff;
-	buf[7] = 'e' ^ 0xff;
-	buf[8] = 'l' ^ 0xff;
-	buf[9] = 'l' ^ 0xff;
-	buf[10] = 'o' ^ 0xff;
-	buf[11] = '!' ^ 0xff;
-	buf[12] = '\n' ^ 0xff;
-	buf[13] = '\0';
-
 	printf("Going to send junk...\n");
-	len = send(s, buf, 14, 0);
+	memset(buf, 0, sizeof(buf));
+
+	len = frame_it(buf, sizeof(buf), msg, sizeof(msg));
+	printf("junk is %lu bytes...\n", len);
+
+	printf("xxx: header is 0x%02x 0x%02x 0x%02x 0x%02x\n",
+	    buf[0], buf[1], buf[2], buf[3]);
+	printf("xxx: payload len is %d\n", (127 & buf[1]));
+	len = send(s, buf, len, 0);
 	if (len < 1)
 		err(1, "send junk");
 
 	printf("Listening for response...\n");
 
+	memset(buf, 0, sizeof(buf));
 	len = recv(s, buf, sizeof(buf), 0);
 
 	printf("Got %lu bytes:\n", len);
-	printf("header bytes: 0x%02x 0x%02x\n", (unsigned char) buf[0], (unsigned char) buf[1]);
+	printf("header bytes: 0x%02x 0x%02x\n", buf[0], buf[1]);
 	printf("raw message: %s\n", buf);
 
 	if (shutdown(s, SHUT_RDWR))
