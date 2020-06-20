@@ -28,6 +28,8 @@
 #include <resolv.h>
 #include <sys/socket.h>
 
+#define HANDSHAKE_BUF_SIZE 1024
+
 static const char server_handshake[] = "HTTP/1.1 101 Switching Protocols";
 
 static const char HANDSHAKE_TEMPLATE[] =
@@ -41,7 +43,14 @@ static const char HANDSHAKE_TEMPLATE[] =
 
 static const char B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-static char msg[] = "Hey dude!";
+static char LONG_MSG[] =
+    "{\"name\": \"dave\", \"age\": 99,"
+    " \"stuff\": [1, 2, 3, 4, 5],"
+    " \"more_stuff\": { \"ok\": true },"
+    " \"more_and_more\": [ { \"name\": \"maple\" } ],"
+    " \"date\": \"2020-06-18T12:34:56\" }";
+
+static char SHORT_MSG[] = "{\"msg\": \"websockets are dumb\"}";
 
 /*
  * This is the dumbest 16-byte base64 data generator.
@@ -74,6 +83,8 @@ dumb_mask(int8_t *mask)
 }
 
 /*
+ * dumb_frame
+ *
  * Frame some data for a crime it did not commit.
  *
  * Assumptions:
@@ -113,9 +124,10 @@ dumb_mask(int8_t *mask)
  *    +---------------------------------------------------------------+
  */
 size_t
-frame_it(uint8_t *out, size_t out_len, char *data, size_t len)
+dumb_frame(uint8_t *out, size_t out_len, char *data, size_t len)
 {
 	int idx = 0;
+	uint16_t payload;
 	size_t i;
 	int8_t mask[4];
 
@@ -130,20 +142,20 @@ frame_it(uint8_t *out, size_t out_len, char *data, size_t len)
 	out[0] = 0x82;
 
 	if (len < 126) {
-		printf("XXX trivial, len : %lu\n", len);
 		// the trivial 7 bit payload len case
 		out[1] = 0x80 + (uint8_t) len;
-		printf("xxxxx: 0x%x\n", out[1]);
 		idx = 1;
 	} else {
 		// the 7+16 bits payload len case
-		out[1] = (char) 0x80 + 126;
+		out[1] = 0x80 + 126;
 
 		// payload length in network byte order
-		out[2] = len >> 8;
-		out[3] = len & 0x00FF;
+		payload = htons(len);
+		out[2] = payload & 0xFF;
+		out[3] = payload >> 8;
 		idx = 3;
 	}
+	// and that's it, because 2^24 bytes should be enough for anyone
 
 	out[++idx] = mask[0];
 	out[++idx] = mask[1];
@@ -151,6 +163,7 @@ frame_it(uint8_t *out, size_t out_len, char *data, size_t len)
 	out[++idx] = mask[3];
 
 	for (i = 0; i < len; i++) {
+		// We just transmit in host byte order cause YOLO
 		out[++idx] = data[i] ^ mask[i % 4];
 	}
 
@@ -158,85 +171,128 @@ frame_it(uint8_t *out, size_t out_len, char *data, size_t len)
 	return idx;
 }
 
-
+/*
+ * dumb_handshake
+ *
+ * Take an existing, connected socket (s) and do the secret websocket
+ * fraternity handshake.
+ */
 int
-main()
+dumb_handshake(int s, char *host, char *path)
 {
-	int ret, s;
-	char key[25];
-	uint8_t buf[1024];
-	char *hostname = "localhost";
+	int ret;
 	size_t len;
+	char key[25];
+	uint8_t *buf;
 
-	struct sockaddr_in addr;
-	struct hostent *hostinfo;
+	buf = calloc(sizeof(uint8_t), HANDSHAKE_BUF_SIZE);
+	if (!buf)
+		err(errno, "calloc");
 
-	// Pre-generate our dumb key
 	memset(key, 0, sizeof(key));
 	dumb_key(key);
 
+	len = snprintf(buf, HANDSHAKE_BUF_SIZE, HANDSHAKE_TEMPLATE,
+	    path, host, key);
+	if (len < 1) {
+		free(buf);
+		err(errno, "snprintf");
+	}
+
+	len = send(s, buf, len, 0);
+	if (len < 1) {
+		free(buf);
+		errx(3, "send");
+	}
+
+	memset(buf, 0, HANDSHAKE_BUF_SIZE);
+	len = recv(s, buf, HANDSHAKE_BUF_SIZE, 0);
+	if (len < 1) {
+		free(buf);
+		err(errno, "recv");
+	}
+
+	// XXX: if we gave a crap, we'd validate the returned key
+
+	ret = memcmp(server_handshake, buf, sizeof(server_handshake) - 1);
+
+	free(buf);
+	return ret;
+}
+
+/*
+ * dumb_connect
+ *
+ * Ugh, just connect to a host/port, ok?
+ */
+int
+dumb_connect(char *host, int port)
+{
+	int s;
+	struct sockaddr_in addr;
+	struct hostent *hostinfo;
+
 	s = socket(AF_INET, SOCK_STREAM, 0);
 	if (s < 0)
-		err(1, "socket");
+		err(errno, "socket");
 
-	hostinfo = gethostbyname(hostname);
+	hostinfo = gethostbyname(host);
 	if (hostinfo == NULL)
-		err(2, "gethostbyname");
+		err(1, "gethostbyname");
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = hostinfo->h_addrtype;
 	addr.sin_len = hostinfo->h_length;
-	addr.sin_port = htons(8000);
+	addr.sin_port = htons(port);
 	memcpy(&addr.sin_addr, hostinfo->h_addr_list[0], hostinfo->h_length);
 
-	ret = connect(s, (struct sockaddr*) &addr, sizeof(addr));
-	if (ret)
+	if (connect(s, (struct sockaddr*) &addr, sizeof(addr)))
 		err(errno, "connect");
 
-	memset(buf, 0, sizeof(buf));
-	len = snprintf(buf, sizeof(buf), HANDSHAKE_TEMPLATE, "/", hostname, key);
+	return s;
+}
 
-	printf("Going to send:\n%s\n", buf);
-	len = send(s, buf, len, 0);
+int
+main()
+{
+	int i, s;
+	size_t len;
+	uint8_t *buf;
 
-	if (len < 0)
-		errx(3, "send");
+	size_t max_frame = 1024 * 8;
+	char *msgs[] = { LONG_MSG, SHORT_MSG };
+	size_t sizes[] = { sizeof(LONG_MSG), sizeof(SHORT_MSG) };
 
-	printf("Sent %lu bytes\n", len);
+	buf = calloc(sizeof(uint8_t), max_frame);
+	if (buf == NULL)
+		err(1, "calloc");
 
-	memset(buf, 0, sizeof(buf));
-	len = recv(s, buf, sizeof(buf), 0);
-	if (len == 0)
-		err(4, "recv (no data)");
-	if (len < 0)
-		err(errno, "recv");
+	s = dumb_connect("localhost", 8000);
 
-	printf("----------\nGot %lu bytes:\n%s\n", len, buf);
+	if (dumb_handshake(s, "localhost", "/"))
+		err(1, "handshake");
 
-	if (memcmp(server_handshake, buf, sizeof(server_handshake) - 1))
-		err(5, "not ok?");
 
-	printf("Going to send junk...\n");
-	memset(buf, 0, sizeof(buf));
+	for (i = 0; i < 2; i++) {
 
-	len = frame_it(buf, sizeof(buf), msg, sizeof(msg));
-	printf("junk is %lu bytes...\n", len);
+		len = dumb_frame(buf, max_frame, msgs[i], sizes[i]);
+		printf("Sending a frame with %lu bytes...\n", len);
 
-	printf("xxx: header is 0x%02x 0x%02x 0x%02x 0x%02x\n",
-	    buf[0], buf[1], buf[2], buf[3]);
-	printf("xxx: payload len is %d\n", (127 & buf[1]));
-	len = send(s, buf, len, 0);
-	if (len < 1)
-		err(1, "send junk");
+		len = send(s, buf, len, 0);
+		if (len < 1)
+			err(1, "send");
 
-	printf("Listening for response...\n");
+		printf("Listening for response...\n");
 
-	memset(buf, 0, sizeof(buf));
-	len = recv(s, buf, sizeof(buf), 0);
+		memset(buf, 0, max_frame);
+		len = recv(s, buf, max_frame, 0);
 
-	printf("Got %lu bytes:\n", len);
-	printf("header bytes: 0x%02x 0x%02x\n", buf[0], buf[1]);
-	printf("raw message: %s\n", buf);
+		printf("Got %lu bytes...\n", len);
+		printf("  header bytes: 0x%02x 0x%02x\n", buf[0], buf[1]);
+		printf("  raw message:\n%s,\n", buf);
+
+		memset(buf, 0, max_frame);
+	}
 
 	if (shutdown(s, SHUT_RDWR))
 		err(5, "shutdown");
