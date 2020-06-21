@@ -1,15 +1,23 @@
-CFLAGS	+= -c -std=c99 -Wall -Wextra -O0 -g
+CFLAGS	+= -Wall -Wstrict-prototypes -Wmissing-prototypes
+CFLAGS	+= -Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
+CFLAGS	+= -Wsign-compare -Werror-implicit-function-declaration
+CFLAGS	+= -Werror
 
-OBJS	= dws.o
+DWS_OBJ = dws.o
+DWS_TEST = client_test
 
 .PHONY:	clean
 
-dws: $(OBJS)
-	$(CC) -o $@ $(LDFLAGS) $(OBJS)
+$(DWS_OBJ): dws.c dws.h
 
-all: dws
+tests: $(DWS_TEST)
+test: tests
+	./$(DWS_TEST) localhost 8000
+
+$(DWS_TEST): client_test.c dws.h $(DWS_OBJ)
+	$(CC) client_test.c $(DWS_OBJ) -o $@ -I.
 
 clean:
 	@echo make clean
-	rm $(OBJS)
-	rm dws
+	rm -f $(DWS_OBJ)
+	rm -f $(DWS_TEST)
