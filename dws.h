@@ -14,8 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#ifndef _DUMB_WS
-#define	_DUMB_WS
+#ifndef DWS_H
+#define	DWS_H
 
 #include <sys/types.h>
 
@@ -34,4 +34,4 @@ ssize_t dumb_recv(int, uint8_t*, size_t);
 int dumb_ping(int);
 int dumb_close(int);
 
-#endif /* _DUMB_WS */
+#endif /* DWS_H */

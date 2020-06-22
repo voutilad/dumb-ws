@@ -1,20 +1,20 @@
-const WebSocket = require('ws');
-
-const wss = new WebSocket.Server({ port: 8000 });
+const WebSocket = require('ws')
+const wss = new WebSocket.Server({ port: 8000 })
 
 wss.on('connection', (ws, req) => {
-  console.log(`got connection from ${req.connection.remoteAddress}:${req.connection.remotePort}`);
+  console.log(`got connection from ${req.connection.remoteAddress}:${req.connection.remotePort}`)
 
   ws.on('message', (message) => {
+    let m = message.toString()
     try {
-      const s = message.slice(0, message.indexOf(0)).toString()
-      const o = JSON.parse(s)
-      console.log(`[${Date.now()}] got:\n${JSON.stringify(o)}`);
+      const o = JSON.parse(m)
+      console.log(`got json: ${JSON.stringify(o)}`);
     } catch (e) {
       console.error(e)
-      console.log(`not JSON, but got ${message}`)
+      console.log(`got: ${m}`)
     }
-    ws.send(new Buffer.from('OK!'))
-  });
+    ws.send(new Buffer.from('You said: ' + m))
+  })
+})
 
-});
+console.log(`listening on port 8000`)

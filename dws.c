@@ -33,6 +33,9 @@
 // It's ludicrous to think we'd have a server handshake response larger
 #define HANDSHAKE_BUF_SIZE 1024
 
+// The largest frame header in bytes, assuming the largest payload
+#define FRAME_MAX_HEADER_SIZE 14
+
 static const char server_handshake[] = "HTTP/1.1 101 Switching Protocols";
 
 static const char HANDSHAKE_TEMPLATE[] =
@@ -49,7 +52,7 @@ static const char B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0
 /*
  * This is the dumbest 16-byte base64 data generator.
  *
- * Since RFC-6455 says we don't care about the random 16-byte value used
+ * Since RFC6455 says we don't care about the random 16-byte value used
  * for the key (the server never decodes it), why bother actually writing
  * propery base64 encoding when we can just pick 22 valid base64 characters
  * to make our key?
@@ -62,7 +65,7 @@ dumb_key(char *out)
 	/* 25 because 22 for the fake b64 + == + NULL */
 	memset(out, 0, 25);
 	for (i=0; i<22; i++) {
-		r = arc4random_uniform(sizeof(B64) - 1);
+		r = (int) arc4random_uniform(sizeof(B64) - 1);
 		out[i] = B64[r];
 	}
 	out[22] = '=';
@@ -72,13 +75,12 @@ dumb_key(char *out)
 
 /*
  * As the name implies, it just makes a random mask for use in our frames.
- *
- * TODO: change this to just return a new mask, not populate one.
  */
 static void
-dumb_mask(int8_t mask[4])
+dumb_mask(uint8_t mask[4])
 {
 	uint32_t r;
+
 	r = arc4random();
 	mask[0] = r >> 24;
 	mask[1] = (r & 0x00FF0000) >> 16;
@@ -87,7 +89,28 @@ dumb_mask(int8_t mask[4])
 }
 
 /*
- * Initialize a frame buffer, returning the payload offset
+ * Initialize a frame buffer, returning the offset to the frame's payload.
+ *
+ * For reference, this is what frames look like per RFC6455 sec. 5.2:
+ *
+ *     0                   1                   2                   3
+ *     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *    +-+-+-+-+-------+-+-------------+-------------------------------+
+ *    |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
+ *    |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
+ *    |N|V|V|V|       |S|             |   (if payload len==126/127)   |
+ *    | |1|2|3|       |K|             |                               |
+ *    +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
+ *    |     Extended payload length continued, if payload len == 127  |
+ *    + - - - - - - - - - - - - - - - +-------------------------------+
+ *    |                               |Masking-key, if MASK set to 1  |
+ *    +-------------------------------+-------------------------------+
+ *    | Masking-key (continued)       |          Payload Data         |
+ *    +-------------------------------- - - - - - - - - - - - - - - - +
+ *    :                     Payload Data continued ...                :
+ *    + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
+ *    |                     Payload Data continued ...                |
+ *    +---------------------------------------------------------------+
  */
 static ssize_t
 init_frame(uint8_t *frame, enum FRAME_OPCODE type, uint8_t mask[4], size_t len)
@@ -99,7 +122,7 @@ init_frame(uint8_t *frame, enum FRAME_OPCODE type, uint8_t mask[4], size_t len)
 	if (len > (1 << 24))
 		return -1;
 
-	frame[0] = 0x80 + type;
+	frame[0] = (uint8_t) (0x80 + type);
 	if (len < 126) {
 		// The trivial "7 bit" payload case
 		frame[1] = 0x80 + (uint8_t) len;
@@ -159,31 +182,12 @@ dump_frame(uint8_t *frame, size_t len)
  *  size of the frame in bytes,
  * -1 when len is too large
  *
- * For reference, this is what frames look like per RFC-6455 sec. 5.2:
- *
- *     0                   1                   2                   3
- *     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
- *    +-+-+-+-+-------+-+-------------+-------------------------------+
- *    |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
- *    |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
- *    |N|V|V|V|       |S|             |   (if payload len==126/127)   |
- *    | |1|2|3|       |K|             |                               |
- *    +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
- *    |     Extended payload length continued, if payload len == 127  |
- *    + - - - - - - - - - - - - - - - +-------------------------------+
- *    |                               |Masking-key, if MASK set to 1  |
- *    +-------------------------------+-------------------------------+
- *    | Masking-key (continued)       |          Payload Data         |
- *    +-------------------------------- - - - - - - - - - - - - - - - +
- *    :                     Payload Data continued ...                :
- *    + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
- *    |                     Payload Data continued ...                |
- *    +---------------------------------------------------------------+
  */
 static ssize_t
 dumb_frame(uint8_t *frame, uint8_t *data, size_t len)
 {
-	size_t i, offset;
+	size_t i;
+	ssize_t offset;
 	uint8_t mask[4] = { 0, 0, 0, 0 };
 
 	// Just a quick safety check: we don't do large payloads
@@ -194,6 +198,9 @@ dumb_frame(uint8_t *frame, uint8_t *data, size_t len)
 	dumb_mask(mask);
 
 	offset = init_frame(frame, BINARY, mask, len);
+	if (offset < 0)
+		errx(1, "init_frame: bad frame length");
+
 	for (i = 0; i < len; i++) {
 		// We just transmit in host byte order, someone else's problem
 		frame[++offset] = data[i] ^ mask[i % 4];
@@ -228,9 +235,9 @@ dumb_handshake(int s, char *host, char *path)
 	int ret;
 	ssize_t len;
 	char key[25];
-	uint8_t *buf;
+	char *buf;
 
-	buf = calloc(sizeof(uint8_t), HANDSHAKE_BUF_SIZE);
+	buf = calloc(sizeof(char), HANDSHAKE_BUF_SIZE);
 	if (!buf)
 		err(errno, "calloc");
 
@@ -244,7 +251,7 @@ dumb_handshake(int s, char *host, char *path)
 		return -1;
 	}
 
-	len = send(s, buf, ret, 0);
+	len = send(s, buf, (size_t) ret, 0);
 	if (len < 1) {
 		free(buf);
 		return -2;
@@ -258,7 +265,7 @@ dumb_handshake(int s, char *host, char *path)
 	}
 
 	/* XXX: If we gave a crap, we'd validate the returned key per the
-	 * requirements of RFC-6455 sec. 4.1, but we don't.
+	 * requirements of RFC6455 sec. 4.1, but we don't.
 	 */
 	ret = memcmp(server_handshake, buf, sizeof(server_handshake) - 1);
 	if (ret)
@@ -282,7 +289,7 @@ dumb_handshake(int s, char *host, char *path)
  *  int fd for a new socket connected to given host/port,
  * -1 if it failed to create a socket,
  * -2 if it failed to resolve host (check h_errno),
- * -3 if it failed to connect.
+ * -3 if it failed to connect(2).
  */
 int
 dumb_connect(char *host, int port)
@@ -300,10 +307,11 @@ dumb_connect(char *host, int port)
 		return -2;
 
 	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = hostinfo->h_addrtype;
-	addr.sin_len = hostinfo->h_length;
+	addr.sin_family = (sa_family_t) hostinfo->h_addrtype;
+	addr.sin_len = (u_int8_t) hostinfo->h_length;
 	addr.sin_port = htons(port);
-	memcpy(&addr.sin_addr, hostinfo->h_addr_list[0], hostinfo->h_length);
+	memcpy(&addr.sin_addr, hostinfo->h_addr_list[0],
+	    (size_t) hostinfo->h_length);
 
 	if (connect(s, (struct sockaddr*) &addr, sizeof(addr)))
 		return -3;
@@ -311,15 +319,30 @@ dumb_connect(char *host, int port)
 	return s;
 }
 
+/*
+ * dumb_send
+ *
+ * Send some data to a dumb websocket server in a binary frame. Handles the
+ * dumb framing so you don't have toooooo!
+ *
+ * Parameters:
+ *  s: a connected dumb websocket descriptor
+ *  payload: the binary payload to send
+ *  len: the length of the payload in bytes
+ *
+ * Returns:
+ *  the amount of bytes sent,
+ * -1 on failure to calloc(3) a buffer for the dumb websocket frame,
+ *  or whatever send(2) might return on error (zero or a negative value)
+ */
 ssize_t
 dumb_send(int s, uint8_t *payload, size_t len)
 {
 	uint8_t *frame;
 	uint8_t mask[4];
-	size_t frame_len;
-	ssize_t n;
+	ssize_t frame_len, n;
 
-	// We need payload + 14 bytes minimum, but pad a little extra
+	// We need payload size + 14 bytes minimum, but pad a little extra
 	frame = calloc(sizeof(uint8_t), len + 16);
 	if (!frame)
 		return -1;
@@ -328,37 +351,92 @@ dumb_send(int s, uint8_t *payload, size_t len)
 	dumb_mask(mask);
 
 	frame_len = dumb_frame(frame, payload, len);
-	n = send(s, frame, frame_len, 0);
+	if (frame_len < 0)
+		errx(1, "dumb_send: invalid frame payload length");
+
+	n = send(s, frame, (size_t) frame_len, 0);
 
 	free(frame);
 	return n;
 }
 
+/*
+ * dumb_recv
+ *
+ * Try to receive some data from a dumb websocket server. Strips away all the
+ * dumb framing so you get just the data ;-)
+ *
+ * If the data is too large to fit in the destination buffer, it is truncated
+ * due to using memcpy(3).
+ *
+ * Parameters:
+ *  s: a connected dumb websocket descriptor
+ * (out) out: pointer to a buffer to copy to resulting payload to
+ * len: max size of the out-buffer
+ *
+ * Returns:
+ *  the number of bytes received in the payload (not including frame headers),
+ * -1 on failure to calloc(3) memory for a receive buffer,
+ * -2 on failure to recv(2) data,
+ * -3 if the frame was sent fractured (unsupported right now!)
+ */
 ssize_t
 dumb_recv(int s, uint8_t *out, size_t len)
 {
-	uint8_t *buf;
-	ssize_t n;
+	uint8_t *frame;
+	ssize_t payload_len;
+	ssize_t offset = 0, n = 0;
 
-	buf = calloc(sizeof(uint8_t), len + 16);
-	if (!buf)
+	frame = calloc(sizeof(uint8_t), len + FRAME_MAX_HEADER_SIZE + 1);
+	if (!frame)
 		return -1;
 
-	n = recv(s, buf, len + 15, 0);
+	n = recv(s, frame, len + FRAME_MAX_HEADER_SIZE + 1, 0);
 	if (n < 1) {
-		free(buf);
+		free(frame);
 		return -2;
 	}
 
-	memcpy(out, buf, n);
+	// Now to validate the frame...
+	if (!(frame[0] & 0x80)) {
+		// XXX: don't currently support fractured frames, :-(
+		free(frame);
+		return -3;
+	}
 
-	free(buf);
-	return n;
+	payload_len = frame[1] & 0x7F;
+	if (payload_len < 126) {
+		offset = 2;
+	} else if (payload_len == 126) {
+		// arrives in network byte order
+		payload_len = frame[2] << 8;
+		payload_len += frame[3];
+		offset = 4;
+	} else {
+		free(frame);
+		errx(1, "dumb_recv: unsupported payload size");
+	}
+
+	memcpy(out, frame + offset, (size_t) payload_len);
+
+	free(frame);
+	return payload_len;
 }
 
 /*
  * dumb_ping
  *
+ * Send a websocket ping to the server. It's dumb to have payloads here, so
+ * it doesn't support them ;P
+ *
+ * Parameters:
+ *  s: connected socket descriptor to send the ping over
+ *
+ * Returns:
+ *  0 on success,
+ * -1 on failure during send(2),
+ * -2 on failure to receive(2) the response,
+ * -3 on the response being invalid (i.e. not a PONG)
  */
 int
 dumb_ping(int s)
@@ -373,12 +451,12 @@ dumb_ping(int s)
 	len = init_frame(frame, PING, mask, 0);
 	frame[++len] = '\0';
 
-	len = send(s, frame, len, 0);
+	len = send(s, frame, (size_t) len, 0);
 	if (len < 1)
 		return -1;
 
 	memset(frame, 0, sizeof(frame));
-	len = recv(s, frame, len, 0);
+	len = recv(s, frame, (size_t) len, 0);
 	if (len < 1)
 		return -2;
 
@@ -396,16 +474,17 @@ dumb_ping(int s)
  * dumb_close
  *
  * Sadly, websockets have some "close" frame that some servers expect. If a
- * client disconnects without sending one, they sometimes get snippy.
+ * client disconnects without sending one, they sometimes get snippy. It's
+ * sorta dumb.
  *
  * Parameters:
- *  s: socket descriptor to close
+ *  s: a connected socket descriptor to close
  *
  * Returns:
  *  0 on success,
- * -1 on failure to send the close frame,
- * -2 on failure to receive a response,
- * -3 on failure to receive a valid close response
+ * -1 on failure to send(2) the close frame,
+ * -2 on failure to recv(2) a response,
+ * -3 on a response being invalid (i.e. not a CLOSE)
  */
 int
 dumb_close(int s)
@@ -420,12 +499,12 @@ dumb_close(int s)
 	len = init_frame(frame, CLOSE, mask, 0);
 	frame[++len] = '\0';
 
-	len = send(s, frame, len, 0);
+	len = send(s, frame, (size_t) len, 0);
 	if (len < 1)
 		return -1;
 
 	memset(frame, 0, sizeof(frame));
-	len = recv(s, frame, len, 0);
+	len = recv(s, frame, (size_t) len, 0);
 	if (len < 1)
 		return -2;
 

@@ -23,7 +23,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		log.Printf("got: %s", message)
-		err = c.WriteMessage(mt, []byte("OK!"))
+		out := []byte("got: ")
+		out = append(out, message...)
+		err = c.WriteMessage(mt, out)
 		if err != nil {
 			log.Fatal("WriteMessage:", err)
 		}
