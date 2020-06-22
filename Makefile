@@ -15,7 +15,7 @@ test: tests
 	./$(DWS_TEST) localhost 8000
 
 $(DWS_TEST): client_test.c dws.h $(DWS_OBJ)
-	$(CC) client_test.c $(DWS_OBJ) -o $@ -I.
+	$(CC) $(CFLAGS) client_test.c $(DWS_OBJ) $(LDFLAGS) -o $@ -I.
 
 clean:
 	@echo make clean

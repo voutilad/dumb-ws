@@ -29,8 +29,8 @@ enum FRAME_OPCODE {
 
 int dumb_connect(char*, int);
 int dumb_handshake(int, char*, char*);
-ssize_t dumb_send(int, uint8_t*, size_t);
-ssize_t dumb_recv(int, uint8_t*, size_t);
+ssize_t dumb_send(int, void*, size_t);
+ssize_t dumb_recv(int, void*, size_t);
 int dumb_ping(int);
 int dumb_close(int);
 

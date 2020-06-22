@@ -308,7 +308,7 @@ dumb_connect(char *host, int port)
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = (sa_family_t) hostinfo->h_addrtype;
-	addr.sin_len = (u_int8_t) hostinfo->h_length;
+	//addr.sin_len = (u_int8_t) hostinfo->h_length;
 	addr.sin_port = htons(port);
 	memcpy(&addr.sin_addr, hostinfo->h_addr_list[0],
 	    (size_t) hostinfo->h_length);
@@ -336,7 +336,7 @@ dumb_connect(char *host, int port)
  *  or whatever send(2) might return on error (zero or a negative value)
  */
 ssize_t
-dumb_send(int s, uint8_t *payload, size_t len)
+dumb_send(int s, void *payload, size_t len)
 {
 	uint8_t *frame;
 	uint8_t mask[4];
@@ -381,7 +381,7 @@ dumb_send(int s, uint8_t *payload, size_t len)
  * -3 if the frame was sent fractured (unsupported right now!)
  */
 ssize_t
-dumb_recv(int s, uint8_t *out, size_t len)
+dumb_recv(int s, void *out, size_t len)
 {
 	uint8_t *frame;
 	ssize_t payload_len;

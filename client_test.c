@@ -25,7 +25,6 @@ main(int argc, char **argv)
 {
 	int s, port, ret;
 	size_t len;
-	uint8_t buf[1024];
 	char *host;
 
 	if (argc < 3)
@@ -44,14 +43,14 @@ main(int argc, char **argv)
 
 	// don't send the null byte
 	printf("sending small payload (%lu bytes)\n", sizeof(SHORT_MSG) - 1);
-	len = dumb_send(s, SHORT_MSG, sizeof(SHORT_MSG) - 1);
+	len = dumb_send(s, &SHORT_MSG, sizeof(SHORT_MSG) - 1);
 
 	memset(buf, 0, sizeof(buf));
 	len = dumb_recv(s, buf, sizeof(buf));
 	printf("received payload of %lu bytes:\n---\n%s\n---\n", len, buf);
 
 	printf("sending large payload (%lu bytes)\n", sizeof(LONG_MSG) - 1);
-	len = dumb_send(s, LONG_MSG, sizeof(LONG_MSG) - 1);
+	len = dumb_send(s, &LONG_MSG, sizeof(LONG_MSG) - 1);
 
 	memset(buf, 0, sizeof(buf));
 	len = dumb_recv(s, buf, sizeof(buf));
