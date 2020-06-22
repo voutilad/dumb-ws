@@ -3,12 +3,14 @@ I just need an integration shim for [chocolate-doom](https://github.com/voutilad
 
 ## ughhhhhh
 Yeah, this in no way is going to be a fully [RFC6455](https://tools.ietf.org/html/rfc6455) compliant WebSocket client. Don't even bother asking because...
-- **no plan to support Text frames** since they require utf-8 support (wicked gross)
-- **super lazy key generation** (have you even /read/ RFC6455?)
-- **no server key verification** (/might/ add this...but not seeing the point yet)
-- **no fragmentation support** (don't need it)
-- **no payloads for ping/pong/close** (just stop it)
-- **zero extension support** (figure it out yourself, ok?)
+- **no plan to support Text frames** since they require utf-8 support _(wicked gross)_
+- **super lazy key generation** (have you even _read_ RFC6455?)
+- **no server key verification** (_might_ add this...but not seeing the point yet)
+- **no fragmentation support** _(don't need it)_
+- **no payloads for ping/pong/close** _(just stop it)_
+- **zero extension support** _(figure it out yourself, ok?)_
+
+Seriously, it's _Binary Frames or Bust_ around here so you're on your own and dumb-ws isn't going to hold your hand.
 
 ## ok, i'll bite
 I'm developing on OpenBSD, but you might need to add `libbsd` if on Linux. (On debian-like systems, try: `sudo apt install libbsd-dev`.)
@@ -43,7 +45,7 @@ Yes, this is actually a priority for me after TLS.
 Maybe I'll add basic-auth support.
 
 ## abwaah? close on invalid data?
-Per sec. 10.7, I might add in closure on bad data. /Might./
+Per sec. 10.7, I might add in closure on bad data. _Might._
 
 # the license?
 Why would you even think of using this horrible mess? Fine, ISC. Buyer beware: you get what you pay for.
