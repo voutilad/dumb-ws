@@ -27,6 +27,7 @@
 #include <netinet/in.h>
 #include <resolv.h>
 #include <sys/socket.h>
+#include <tls.h>
 
 #include "dws.h"
 
@@ -217,7 +218,7 @@ dumb_frame(uint8_t *frame, uint8_t *data, size_t len)
  * handshake to prove we are a dumb websocket client.
  *
  * Parameters:
- *  s: file descriptor for a connected socket
+ *  ws: a pointer to a connected websocket
  *  host: string representing the hostname
  *  path: the uri path, like "/" or "/dumb"
  *
@@ -230,7 +231,7 @@ dumb_frame(uint8_t *frame, uint8_t *data, size_t len)
  *  (in all cases, check errno)
  */
 int
-dumb_handshake(int s, char *host, char *path)
+dumb_handshake(struct websocket *ws, char *host, char *path)
 {
 	int ret;
 	ssize_t len;
@@ -251,14 +252,14 @@ dumb_handshake(int s, char *host, char *path)
 		return -1;
 	}
 
-	len = send(s, buf, (size_t) ret, 0);
+	len = send(ws->s, buf, (size_t) ret, 0);
 	if (len < 1) {
 		free(buf);
 		return -2;
 	}
 
 	memset(buf, 0, HANDSHAKE_BUF_SIZE);
-	len = recv(s, buf, HANDSHAKE_BUF_SIZE, 0);
+	len = recv(ws->s, buf, HANDSHAKE_BUF_SIZE, 0);
 	if (len < 1) {
 		free(buf);
 		return -3;
@@ -282,17 +283,18 @@ dumb_handshake(int s, char *host, char *path)
  * setup of a socket connection, so is totally optional.
  *
  * Parameters:
+ *    ws: (out) pointer to a websocket struct to initialize
  *  host: hostname or ip address a string
  *  port: tcp port number
  *
  * Returns:
- *  int fd for a new socket connected to given host/port,
+ *  0 on success,
  * -1 if it failed to create a socket,
  * -2 if it failed to resolve host (check h_errno),
  * -3 if it failed to connect(2).
  */
 int
-dumb_connect(char *host, int port)
+dumb_connect(struct websocket *ws, char *host, int port)
 {
 	int s;
 	struct sockaddr_in addr;
@@ -308,7 +310,6 @@ dumb_connect(char *host, int port)
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = (sa_family_t) hostinfo->h_addrtype;
-	//addr.sin_len = (u_int8_t) hostinfo->h_length;
 	addr.sin_port = htons(port);
 	memcpy(&addr.sin_addr, hostinfo->h_addr_list[0],
 	    (size_t) hostinfo->h_length);
@@ -316,7 +317,11 @@ dumb_connect(char *host, int port)
 	if (connect(s, (struct sockaddr*) &addr, sizeof(addr)))
 		return -3;
 
-	return s;
+	ws->s = s;
+	ws->ctx = NULL;
+	ws->addr = addr;
+
+	return 0;
 }
 
 /*
@@ -326,7 +331,7 @@ dumb_connect(char *host, int port)
  * dumb framing so you don't have toooooo!
  *
  * Parameters:
- *  s: a connected dumb websocket descriptor
+ *  ws: a pointer to a connected dumb websocket
  *  payload: the binary payload to send
  *  len: the length of the payload in bytes
  *
@@ -336,7 +341,7 @@ dumb_connect(char *host, int port)
  *  or whatever send(2) might return on error (zero or a negative value)
  */
 ssize_t
-dumb_send(int s, void *payload, size_t len)
+dumb_send(struct websocket *ws, void *payload, size_t len)
 {
 	uint8_t *frame;
 	uint8_t mask[4];
@@ -354,7 +359,7 @@ dumb_send(int s, void *payload, size_t len)
 	if (frame_len < 0)
 		errx(1, "dumb_send: invalid frame payload length");
 
-	n = send(s, frame, (size_t) frame_len, 0);
+	n = send(ws->s, frame, (size_t) frame_len, 0);
 
 	free(frame);
 	return n;
@@ -370,7 +375,7 @@ dumb_send(int s, void *payload, size_t len)
  * due to using memcpy(3).
  *
  * Parameters:
- *  s: a connected dumb websocket descriptor
+ *  ws: a pointer to a connected websocket
  * (out) out: pointer to a buffer to copy to resulting payload to
  * len: max size of the out-buffer
  *
@@ -381,7 +386,7 @@ dumb_send(int s, void *payload, size_t len)
  * -3 if the frame was sent fractured (unsupported right now!)
  */
 ssize_t
-dumb_recv(int s, void *out, size_t len)
+dumb_recv(struct websocket *ws, void *out, size_t len)
 {
 	uint8_t *frame;
 	ssize_t payload_len;
@@ -391,7 +396,7 @@ dumb_recv(int s, void *out, size_t len)
 	if (!frame)
 		return -1;
 
-	n = recv(s, frame, len + FRAME_MAX_HEADER_SIZE + 1, 0);
+	n = recv(ws->s, frame, len + FRAME_MAX_HEADER_SIZE + 1, 0);
 	if (n < 1) {
 		free(frame);
 		return -2;
@@ -430,7 +435,7 @@ dumb_recv(int s, void *out, size_t len)
  * it doesn't support them ;P
  *
  * Parameters:
- *  s: connected socket descriptor to send the ping over
+ *  ws: pointer to a connected websocket for sending the ping
  *
  * Returns:
  *  0 on success,
@@ -439,7 +444,7 @@ dumb_recv(int s, void *out, size_t len)
  * -3 on the response being invalid (i.e. not a PONG)
  */
 int
-dumb_ping(int s)
+dumb_ping(struct websocket *ws)
 {
 	ssize_t len;
 	uint8_t mask[4];
@@ -451,12 +456,12 @@ dumb_ping(int s)
 	len = init_frame(frame, PING, mask, 0);
 	frame[++len] = '\0';
 
-	len = send(s, frame, (size_t) len, 0);
+	len = send(ws->s, frame, (size_t) len, 0);
 	if (len < 1)
 		return -1;
 
 	memset(frame, 0, sizeof(frame));
-	len = recv(s, frame, (size_t) len, 0);
+	len = recv(ws->s, frame, (size_t) len, 0);
 	if (len < 1)
 		return -2;
 
@@ -477,17 +482,21 @@ dumb_ping(int s)
  * client disconnects without sending one, they sometimes get snippy. It's
  * sorta dumb.
  *
+ * Note: doesn't free the data structures as it's reopenable, but the socket
+ * does get closed per the spec.
+ *
  * Parameters:
- *  s: a connected socket descriptor to close
+ *  ws: a pointer to a connected websocket to close
  *
  * Returns:
  *  0 on success,
  * -1 on failure to send(2) the close frame,
  * -2 on failure to recv(2) a response,
- * -3 on a response being invalid (i.e. not a CLOSE)
+ * -3 on a response being invalid (i.e. not a CLOSE),
+ * -4 on a failure to shutdown(2) the underlying socket
  */
 int
-dumb_close(int s)
+dumb_close(struct websocket *ws)
 {
 	ssize_t len;
 	uint8_t mask[4];
@@ -499,17 +508,20 @@ dumb_close(int s)
 	len = init_frame(frame, CLOSE, mask, 0);
 	frame[++len] = '\0';
 
-	len = send(s, frame, (size_t) len, 0);
+	len = send(ws->s, frame, (size_t) len, 0);
 	if (len < 1)
 		return -1;
 
 	memset(frame, 0, sizeof(frame));
-	len = recv(s, frame, (size_t) len, 0);
+	len = recv(ws->s, frame, (size_t) len, 0);
 	if (len < 1)
 		return -2;
 
 	if (frame[0] != (0x80 + CLOSE))
 		return -3;
+
+	if (shutdown(ws->s, SHUT_RDWR))
+		return -4;
 
 	return 0;
 }

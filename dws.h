@@ -17,9 +17,13 @@
 #ifndef DWS_H
 #define	DWS_H
 
+#include <netinet/in.h>
 #include <sys/types.h>
 
-// We only do binary frames; text frames imply utf-8 support (yuck)
+/*
+ * We only do Binary frames. Why? You might ask...
+ * Well Text frames require utf-8 support, which is hella gross.
+ */
 enum FRAME_OPCODE {
 	BINARY	= 0x2,
 	CLOSE	= 0x8,
@@ -27,11 +31,26 @@ enum FRAME_OPCODE {
 	PONG	= 0xa,
 };
 
-int dumb_connect(char*, int);
-int dumb_handshake(int, char*, char*);
-ssize_t dumb_send(int, void*, size_t);
-ssize_t dumb_recv(int, void*, size_t);
-int dumb_ping(int);
-int dumb_close(int);
+/*
+ * A websocket contains all the state needed for both establishing the
+ * connection as well as re-connecting if required. It's possibly a
+ * server might close the connection (or it may drop) and require the
+ * client to reconnect. This should be easy, for some definition of easy.
+ */
+struct websocket {
+	int s;
+	struct tls *ctx;
+	struct sockaddr_in addr; // for reconnects
+	// TODO: add basic auth details?
+};
+
+int dumb_connect(struct websocket *ws, char*, int);
+int dumb_connect_tls(struct websocket *ws, char*, int);
+int dumb_handshake(struct websocket *s, char*, char*);
+
+ssize_t dumb_send(struct websocket *ws, void*, size_t);
+ssize_t dumb_recv(struct websocket *ws, void*, size_t);
+int dumb_ping(struct websocket *ws);
+int dumb_close(struct websocket *ws);
 
 #endif /* DWS_H */

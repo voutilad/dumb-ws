@@ -3,6 +3,8 @@ CFLAGS	+= -Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS	+= -Wsign-compare -Werror-implicit-function-declaration
 CFLAGS	+= -Werror
 
+LDFLAGS	+= -ltls
+
 DWS_OBJ = dws.o
 DWS_TEST = client_test
 

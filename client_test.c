@@ -23,9 +23,10 @@ static uint8_t buf[1024];
 int
 main(int argc, char **argv)
 {
-	int s, port, ret;
+	int port, ret;
 	size_t len;
 	char *host;
+	struct websocket ws;
 
 	if (argc < 3)
 		errx(1, "too few arguments");
@@ -34,39 +35,45 @@ main(int argc, char **argv)
 	port = atoi(argv[argc - 1]);
 	printf("connecting to %s:%d\n", host, port);
 
-	s = dumb_connect(argv[argc-2], atoi(argv[argc-1]));
+	memset(&ws, 0, sizeof(struct websocket));
+	ret = dumb_connect(&ws, argv[argc-2], atoi(argv[argc-1]));
+	if (ret < 0)
+		err(1, "dumb_connect");
 
-	if (dumb_handshake(s, host, "/"))
+	if (dumb_handshake(&ws, host, "/"))
 		err(2, "handshake");
 
 	printf("handshake complete\n");
 
 	// don't send the null byte
 	printf("sending small payload (%lu bytes)\n", sizeof(SHORT_MSG) - 1);
-	len = dumb_send(s, &SHORT_MSG, sizeof(SHORT_MSG) - 1);
+	len = dumb_send(&ws, &SHORT_MSG, sizeof(SHORT_MSG) - 1);
 
 	memset(buf, 0, sizeof(buf));
-	len = dumb_recv(s, buf, sizeof(buf));
+	len = dumb_recv(&ws, buf, sizeof(buf));
 	printf("received payload of %lu bytes:\n---\n%s\n---\n", len, buf);
 
 	printf("sending large payload (%lu bytes)\n", sizeof(LONG_MSG) - 1);
-	len = dumb_send(s, &LONG_MSG, sizeof(LONG_MSG) - 1);
+	len = dumb_send(&ws, &LONG_MSG, sizeof(LONG_MSG) - 1);
 
 	memset(buf, 0, sizeof(buf));
-	len = dumb_recv(s, buf, sizeof(buf));
+	len = dumb_recv(&ws, buf, sizeof(buf));
 	printf("received payload of %lu bytes:\n---\n%s\n---\n", len, buf);
 
-	ret = dumb_ping(s);
+	ret = dumb_ping(&ws);
 	if (ret) {
 		fprintf(stderr, "dumb_ping returned %d\n", ret);
-		errx(5, "dumb_ping");
+		errx(-ret, "dumb_ping");
 	}
 
-	if (dumb_close(s))
-		errx(6, "dumb_close");
+	ret = dumb_close(&ws);
+	if (ret != 0)
+		errx(-ret, "dumb_close");
 
-	if (shutdown(s, SHUT_RDWR))
-		err(7, "shutdown");
+	// Our socket should be closed now
+	ret = dumb_recv(&ws, buf, sizeof(buf));
+	if (ret != -2)
+		errx(7, "shutdown: socket not closed");
 
 	return 0;
 }
