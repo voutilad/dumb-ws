@@ -1,4 +1,5 @@
 dws
 *.o
-
 client_test
+.pem
+*.pem
