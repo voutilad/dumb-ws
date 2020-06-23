@@ -19,6 +19,7 @@
 
 #include <netinet/in.h>
 #include <sys/types.h>
+#include <netdb.h>
 
 /*
  * We only do Binary frames. Why? You might ask...
@@ -39,14 +40,14 @@ enum FRAME_OPCODE {
  */
 struct websocket {
 	int s;
-	struct sockaddr_in addr; // for reconnects
+	struct addrinfo addr; // for reconnects
 	struct tls *ctx;
 	struct tls_config *cfg;
 	// TODO: add basic auth details?
 };
 
-int dumb_connect(struct websocket *ws, char*, int);
-int dumb_connect_tls(struct websocket *ws, char*, int, int);
+int dumb_connect(struct websocket *ws, char*, char*);
+int dumb_connect_tls(struct websocket *ws, char*, char*, int);
 int dumb_handshake(struct websocket *s, char*, char*);
 
 ssize_t dumb_send(struct websocket *ws, void*, size_t);

@@ -308,32 +308,35 @@ dumb_handshake(struct websocket *ws, char *host, char *path)
  * -3 if it failed to connect(2).
  */
 int
-dumb_connect(struct websocket *ws, char *host, int port)
+dumb_connect(struct websocket *ws, char *host, char *port)
 {
 	int s;
-	struct sockaddr_in addr;
-	struct hostent *hostinfo;
+	struct addrinfo hints, *res;
 
 	s = socket(AF_INET, SOCK_STREAM, 0);
 	if (s < 0)
 		return -1;
 
-	hostinfo = gethostbyname(host);
-	if (hostinfo == NULL)
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = 0;
+	hints.ai_flags = AI_CANONNAME;
+
+
+	if (getaddrinfo(host, port, &hints, &res))
 		return -2;
 
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = (sa_family_t) hostinfo->h_addrtype;
-	addr.sin_port = htons(port);
-	memcpy(&addr.sin_addr, hostinfo->h_addr_list[0],
-	    (size_t) hostinfo->h_length);
-
-	if (connect(s, (struct sockaddr*) &addr, sizeof(addr)))
+	// XXX: for now we're lazy and only try the first addrinfo
+	if (connect(s, res->ai_addr, res->ai_addrlen))
 		return -3;
 
 	ws->s = s;
 	ws->ctx = NULL;
-	ws->addr = addr;
+	memset(&ws->addr, 0, sizeof(ws->addr));
+	memcpy(&ws->addr, res, sizeof(ws->addr));
+
+	freeaddrinfo(res);
 
 	return 0;
 }
@@ -350,7 +353,7 @@ dumb_connect(struct websocket *ws, char *host, int port)
  *  insecure: set to non-zero to disable cert verification
  */
 int
-dumb_connect_tls(struct websocket *ws, char *host, int port, int insecure)
+dumb_connect_tls(struct websocket *ws, char *host, char *port, int insecure)
 {
 	int ret;
 	ret = dumb_connect(ws, host, port);
@@ -363,8 +366,11 @@ dumb_connect_tls(struct websocket *ws, char *host, int port, int insecure)
 
 	ws->cfg = tls_config_new();
 
-	if (insecure)
+	if (insecure) {
+		// XXX: I sure hope you know what you're doing :-)
 		tls_config_insecure_noverifycert(ws->cfg);
+		tls_config_insecure_noverifyname(ws->cfg);
+	}
 
 	ret = tls_configure(ws->ctx, ws->cfg);
 	if (ret)

@@ -24,9 +24,9 @@ int
 main(int argc, char **argv)
 {
 	int ch, ret;
-	int port, use_tls = 0;
+	int use_tls = 0;
 	size_t len;
-	char *host;
+	char *host, *port;
 	struct websocket ws;
 
 	if (argc < 4)
@@ -38,7 +38,7 @@ main(int argc, char **argv)
 			host = optarg;
 			break;
 		case 'p':
-			port = atoi(optarg);
+			port = optarg;
 			break;
 		case 't':
 			use_tls = 1;
@@ -48,7 +48,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	printf("connecting to %s:%d\n", host, port);
+	printf("connecting to %s:%s\n", host, port);
 
 	memset(&ws, 0, sizeof(struct websocket));
 	if (use_tls)
@@ -57,10 +57,11 @@ main(int argc, char **argv)
 		ret = dumb_connect(&ws, host, port);
 
 	if (ret < 0)
-		err(1, "dumb_connect");
+		err(-ret, "dumb_connect (%d)", ret);
 
-	if (dumb_handshake(&ws, host, "/"))
-		err(2, "handshake");
+	ret = dumb_handshake(&ws, host, "/");
+	if (ret)
+		err(-ret, "handshake (%d)", ret);
 
 	printf("handshake complete\n");
 
