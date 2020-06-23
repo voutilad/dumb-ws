@@ -23,20 +23,39 @@ static uint8_t buf[1024];
 int
 main(int argc, char **argv)
 {
-	int port, ret;
+	int ch, ret;
+	int port, use_tls = 0;
 	size_t len;
 	char *host;
 	struct websocket ws;
 
-	if (argc < 3)
+	if (argc < 4)
 		errx(1, "too few arguments");
 
-	host = argv[argc - 2];
-	port = atoi(argv[argc - 1]);
+	while ((ch = getopt(argc, argv, "th:p:")) != -1) {
+		switch (ch) {
+		case 'h':
+			host = optarg;
+			break;
+		case 'p':
+			port = atoi(optarg);
+			break;
+		case 't':
+			use_tls = 1;
+			break;
+		default:
+			errx(1, "usage: [-t] [-h host] [-p port]");
+		}
+	}
+
 	printf("connecting to %s:%d\n", host, port);
 
 	memset(&ws, 0, sizeof(struct websocket));
-	ret = dumb_connect(&ws, argv[argc-2], atoi(argv[argc-1]));
+	if (use_tls)
+		ret = dumb_connect_tls(&ws, host, port, 1);
+	else
+		ret = dumb_connect(&ws, host, port);
+
 	if (ret < 0)
 		err(1, "dumb_connect");
 

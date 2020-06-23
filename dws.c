@@ -252,14 +252,28 @@ dumb_handshake(struct websocket *ws, char *host, char *path)
 		return -1;
 	}
 
-	len = send(ws->s, buf, (size_t) ret, 0);
+	if (ws->ctx)
+		len = tls_write(ws->ctx, buf, (size_t) ret);
+	else
+		len = write(ws->s, buf, (size_t) ret);
+
 	if (len < 1) {
 		free(buf);
 		return -2;
 	}
 
 	memset(buf, 0, HANDSHAKE_BUF_SIZE);
-	len = recv(ws->s, buf, HANDSHAKE_BUF_SIZE, 0);
+
+	if (ws->ctx) {
+		do {
+			len = tls_read(ws->ctx, buf, HANDSHAKE_BUF_SIZE);
+		} while (len == TLS_WANT_POLLIN);
+	}
+	else {
+		// XXX: do we need safey checks?
+		len = read(ws->s, buf, HANDSHAKE_BUF_SIZE);
+	}
+
 	if (len < 1) {
 		free(buf);
 		return -3;
@@ -325,6 +339,41 @@ dumb_connect(struct websocket *ws, char *host, int port)
 }
 
 /*
+ * dumb_connect_tls
+ *
+ * Like dumb_connect, but establishes a TLS connection.
+ *
+ * Parameters:
+ *  ws: pointer to a websocket structure,
+ *  host: hostname or ip address to connect to,
+ *  port: tcp port to connect to,
+ *  insecure: set to non-zero to disable cert verification
+ */
+int
+dumb_connect_tls(struct websocket *ws, char *host, int port, int insecure)
+{
+	int ret;
+	ret = dumb_connect(ws, host, port);
+	if (ret)
+		return ret;
+
+	ws->ctx = tls_client();
+	if (ws->ctx == NULL)
+		errx(1, "tls_client");
+
+	ws->cfg = tls_config_new();
+
+	if (insecure)
+		tls_config_insecure_noverifycert(ws->cfg);
+
+	ret = tls_configure(ws->ctx, ws->cfg);
+	if (ret)
+		errx(1, "tls_configure: invalid config");
+
+	return tls_connect_socket(ws->ctx, ws->s, host);
+}
+
+/*
  * dumb_send
  *
  * Send some data to a dumb websocket server in a binary frame. Handles the
@@ -359,7 +408,10 @@ dumb_send(struct websocket *ws, void *payload, size_t len)
 	if (frame_len < 0)
 		errx(1, "dumb_send: invalid frame payload length");
 
-	n = send(ws->s, frame, (size_t) frame_len, 0);
+	if (ws->ctx)
+		n = tls_write(ws->ctx, frame, (size_t) frame_len);
+	else
+		n = write(ws->s, frame, (size_t) frame_len);
 
 	free(frame);
 	return n;
@@ -382,7 +434,7 @@ dumb_send(struct websocket *ws, void *payload, size_t len)
  * Returns:
  *  the number of bytes received in the payload (not including frame headers),
  * -1 on failure to calloc(3) memory for a receive buffer,
- * -2 on failure to recv(2) data,
+ * -2 on failure to read(2) data,
  * -3 if the frame was sent fractured (unsupported right now!)
  */
 ssize_t
@@ -396,7 +448,11 @@ dumb_recv(struct websocket *ws, void *out, size_t len)
 	if (!frame)
 		return -1;
 
-	n = recv(ws->s, frame, len + FRAME_MAX_HEADER_SIZE + 1, 0);
+	if (ws->ctx)
+		n = tls_read(ws->ctx, frame, len + FRAME_MAX_HEADER_SIZE + 1);
+	else
+		n = read(ws->s, frame, len + FRAME_MAX_HEADER_SIZE + 1);
+
 	if (n < 1) {
 		free(frame);
 		return -2;
@@ -439,7 +495,7 @@ dumb_recv(struct websocket *ws, void *out, size_t len)
  *
  * Returns:
  *  0 on success,
- * -1 on failure during send(2),
+ * -1 on failure during write(2),
  * -2 on failure to receive(2) the response,
  * -3 on the response being invalid (i.e. not a PONG)
  */
@@ -456,12 +512,21 @@ dumb_ping(struct websocket *ws)
 	len = init_frame(frame, PING, mask, 0);
 	frame[++len] = '\0';
 
-	len = send(ws->s, frame, (size_t) len, 0);
+	if (ws->ctx)
+		len = tls_write(ws->ctx, frame, (size_t) len);
+	else
+		len = write(ws->s, frame, (size_t) len);
+
 	if (len < 1)
 		return -1;
 
 	memset(frame, 0, sizeof(frame));
-	len = recv(ws->s, frame, (size_t) len, 0);
+
+	if (ws->ctx)
+		len = tls_read(ws->ctx, frame, (size_t) len);
+	else
+		len = read(ws->s, frame, (size_t) len);
+
 	if (len < 1)
 		return -2;
 
@@ -491,13 +556,14 @@ dumb_ping(struct websocket *ws)
  * Returns:
  *  0 on success,
  * -1 on failure to send(2) the close frame,
- * -2 on failure to recv(2) a response,
+ * -2 on failure to read(2) a response,
  * -3 on a response being invalid (i.e. not a CLOSE),
  * -4 on a failure to shutdown(2) the underlying socket
  */
 int
 dumb_close(struct websocket *ws)
 {
+	int ret;
 	ssize_t len;
 	uint8_t mask[4];
 	uint8_t frame[128];
@@ -508,17 +574,33 @@ dumb_close(struct websocket *ws)
 	len = init_frame(frame, CLOSE, mask, 0);
 	frame[++len] = '\0';
 
-	len = send(ws->s, frame, (size_t) len, 0);
+	if (ws->ctx)
+		len = tls_write(ws->ctx, frame, (size_t) len);
+	else
+		len = write(ws->s, frame, (size_t) len);
+
+
 	if (len < 1)
 		return -1;
 
 	memset(frame, 0, sizeof(frame));
-	len = recv(ws->s, frame, (size_t) len, 0);
+
+	if (ws->ctx)
+		len = tls_read(ws->ctx, frame, (size_t) len);
+	else
+		len = read(ws->s, frame, (size_t) len);
+
 	if (len < 1)
 		return -2;
 
 	if (frame[0] != (0x80 + CLOSE))
 		return -3;
+
+	if (ws->ctx) {
+		do {
+			ret = tls_close(ws->ctx);
+		} while (ret == TLS_WANT_POLLIN || ret == TLS_WANT_POLLOUT);
+	}
 
 	if (shutdown(ws->s, SHUT_RDWR))
 		return -4;
