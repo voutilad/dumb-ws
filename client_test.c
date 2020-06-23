@@ -26,11 +26,8 @@ main(int argc, char **argv)
 	int ch, ret;
 	int use_tls = 0;
 	size_t len;
-	char *host, *port;
+	char *host = "localhost", *port = "8080";
 	struct websocket ws;
-
-	if (argc < 4)
-		errx(1, "too few arguments");
 
 	while ((ch = getopt(argc, argv, "th:p:")) != -1) {
 		switch (ch) {
