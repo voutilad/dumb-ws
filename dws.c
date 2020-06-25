@@ -297,16 +297,13 @@ dumb_frame(uint8_t *frame, uint8_t *data, size_t len)
  * Returns:
  *  0 on success,
  * -1 if it failed to generate the handshake buffer,
- * -2 if it failed to send the handshake,
- * -3 if it failed to receive the response,
- * -4 if the response was invalid.
- *  (in all cases, check errno)
+ * -2 if it received an invalid handshake response,
+ *  fatal error otherwise.
  */
 int
 dumb_handshake(struct websocket *ws, char *host, char *path)
 {
-	int ret;
-	ssize_t len;
+	int len, ret = 0;
 	char key[25];
 	char *buf;
 
@@ -317,33 +314,23 @@ dumb_handshake(struct websocket *ws, char *host, char *path)
 	memset(key, 0, sizeof(key));
 	dumb_key(key);
 
-	ret = snprintf(buf, HANDSHAKE_BUF_SIZE, HANDSHAKE_TEMPLATE,
+	len = snprintf(buf, HANDSHAKE_BUF_SIZE, HANDSHAKE_TEMPLATE,
 	    path, host, key);
-	if (ret < 1) {
+	if (len < 1) {
 		ret = -1;
 		goto out;
 	}
 
-	len = ws_write(ws, buf, (size_t) ret);
-	if (len < 1) {
-		ret = -2;
-		goto out;
-	}
+	ws_write(ws, buf, (size_t) len);
 
 	memset(buf, 0, HANDSHAKE_BUF_SIZE);
-	len = ws_read(ws, buf, HANDSHAKE_BUF_SIZE);
-
-	if (len < 1) {
-		ret = -3;
-		goto out;
-	}
+	ws_read(ws, buf, HANDSHAKE_BUF_SIZE);
 
 	/* XXX: If we gave a crap, we'd validate the returned key per the
 	 * requirements of RFC6455 sec. 4.1, but we don't.
 	 */
-	ret = memcmp(server_handshake, buf, sizeof(server_handshake) - 1);
-	if (ret)
-		ret = -4;
+	if (memcmp(server_handshake, buf, sizeof(server_handshake) - 1))
+		ret = -2;
 
 out:
 	free(buf);
