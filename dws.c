@@ -69,7 +69,7 @@ dumb_key(char *out)
 
 	/* 25 because 22 for the fake b64 + == + NULL */
 	memset(out, 0, 25);
-	for (i=0; i<22; i++) {
+	for (i = 0; i < 22; i++) {
 		r = (int) arc4random_uniform(sizeof(B64) - 1);
 		out[i] = B64[r];
 	}
@@ -162,7 +162,7 @@ ws_write(struct websocket *ws, void *buf, size_t buflen)
 }
 
 /*
- * Initialize a frame buffer, returning the offset to the frame's payload.
+ * Initialize a frame buffer, returning the current size of the frame in bytes.
  *
  * For reference, this is what frames look like per RFC6455 sec. 5.2:
  *
@@ -218,7 +218,8 @@ init_frame(uint8_t *frame, enum FRAME_OPCODE type, uint8_t mask[4], size_t len)
 	frame[++idx] = mask[2];
 	frame[++idx] = mask[3];
 
-	return idx;
+	// XXX: remember, we return the true size...not the offset
+	return idx + 1;
 }
 
 #ifdef DEBUG
@@ -259,8 +260,8 @@ dump_frame(uint8_t *frame, size_t len)
 static ssize_t
 dumb_frame(uint8_t *frame, uint8_t *data, size_t len)
 {
-	size_t i;
-	ssize_t offset;
+	int i;
+	ssize_t header_len;
 	uint8_t mask[4] = { 0, 0, 0, 0 };
 
 	// Just a quick safety check: we don't do large payloads
@@ -270,17 +271,16 @@ dumb_frame(uint8_t *frame, uint8_t *data, size_t len)
 	// Pretend we're in Eyes Wide Shut
 	dumb_mask(mask);
 
-	offset = init_frame(frame, BINARY, mask, len);
-	if (offset < 0)
+	header_len = init_frame(frame, BINARY, mask, len);
+	if (header_len < 0)
 		errx(1, "init_frame: bad frame length");
 
-	for (i = 0; i < len; i++) {
+	for (i = 0; i < (int) len; i++) {
 		// We just transmit in host byte order, someone else's problem
-		frame[++offset] = data[i] ^ mask[i % 4];
+		frame[header_len + i] = data[i] ^ mask[i % 4];
 	}
-	frame[++offset] = '\0';
 
-	return offset;
+	return header_len + i;
 }
 
 /*
@@ -509,7 +509,7 @@ dumb_recv(struct websocket *ws, void *out, size_t len)
 
 	// Now to validate the frame...
 	if (!(frame[0] & 0x80)) {
-		// XXX: don't currently support fractured frames, :-(
+		// XXX: We don't currently fragmentation
 		free(frame);
 		return -3;
 	}
@@ -559,7 +559,6 @@ dumb_ping(struct websocket *ws)
 	dumb_mask(mask);
 
 	len = init_frame(frame, PING, mask, 0);
-	frame[++len] = '\0';
 
 	len = ws_write(ws, frame, (size_t) len);
 	if (len < 1)
@@ -567,7 +566,7 @@ dumb_ping(struct websocket *ws)
 
 	memset(frame, 0, sizeof(frame));
 
-	len = ws_read(ws, frame, (size_t) len);
+	len = ws_read(ws, frame, sizeof(frame));
 	if (len < 1)
 		return -2;
 
@@ -604,27 +603,27 @@ dumb_ping(struct websocket *ws)
 int
 dumb_close(struct websocket *ws)
 {
-	ssize_t len;
+	ssize_t frame_len, len;
 	uint8_t mask[4];
 	uint8_t frame[128];
 
 	memset(frame, 0, sizeof(frame));
 	dumb_mask(mask);
 
-	len = init_frame(frame, CLOSE, mask, 0);
-	frame[++len] = '\0';
+	frame_len = init_frame(frame, CLOSE, mask, 0);
 
-	len = ws_write(ws, frame, (size_t) len);
-	if (len < 1)
+	len = ws_write(ws, frame, (size_t) frame_len);
+	if (len < frame_len)
 		return -1;
 
 	memset(frame, 0, sizeof(frame));
 
-	len = ws_read(ws, frame, (size_t) len);
+	// A valid RFC6455 websocket server MUST send a Close frame in response
+	len = ws_read(ws, frame, sizeof(frame));
 	if (len < 1)
-		return -2;
+		return -3;
 
-	if (frame[0] != (0x80 + CLOSE))
+	if (ws->ctx)
 		tls_close(ws->ctx);
 
 	if (shutdown(ws->s, SHUT_RDWR))

@@ -27,6 +27,7 @@ main(int argc, char **argv)
 	int use_tls = 0;
 	ssize_t len;
 	char *host = "localhost", *port = "8080";
+	char out[1024];
 	struct websocket ws;
 
 	while ((ch = getopt(argc, argv, "th:p:")) != -1) {
@@ -63,19 +64,23 @@ main(int argc, char **argv)
 	printf("handshake complete\n");
 
 	// don't send the null byte
-	printf("sending small payload (%lu bytes)\n", sizeof(SHORT_MSG) - 1);
+	printf("sending small payload (%zu bytes)\n", sizeof(SHORT_MSG) - 1);
 	len = dumb_send(&ws, &SHORT_MSG, sizeof(SHORT_MSG) - 1);
+	printf("sent %ld bytes (header + payload)\n", len);
 
 	memset(buf, 0, sizeof(buf));
 	len = dumb_recv(&ws, buf, sizeof(buf));
-	printf("received payload of %lu bytes:\n---\n%s\n---\n", len, buf);
+	snprintf(out, sizeof(out), "%s", buf);
+	printf("received payload of %ld bytes:\n---\n%s\n---\n", len, out);
 
-	printf("sending large payload (%lu bytes)\n", sizeof(LONG_MSG) - 1);
+	printf("sending large payload (%zu bytes)\n", sizeof(LONG_MSG) - 1);
 	len = dumb_send(&ws, &LONG_MSG, sizeof(LONG_MSG) - 1);
+	printf("sent %ld bytes (header + payload)\n", len);
 
 	memset(buf, 0, sizeof(buf));
 	len = dumb_recv(&ws, buf, sizeof(buf));
-	printf("received payload of %lu bytes:\n---\n%s\n---\n", len, buf);
+	snprintf(out, sizeof(out), "%s", buf);
+	printf("received payload of %ld bytes:\n---\n%s\n---\n", len, out);
 
 	ret = dumb_ping(&ws);
 	if (ret) {
