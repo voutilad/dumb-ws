@@ -1,8 +1,4 @@
-CFLAGS	+= -Wall -Wstrict-prototypes -Wmissing-prototypes
-CFLAGS	+= -Wmissing-declarations -Wshadow -Wpointer-arith -Wcast-qual
-CFLAGS	+= -Wsign-compare -Werror-implicit-function-declaration
-CFLAGS	+= -Werror
-
+CFLAGS	+= -Wall -Weverything -Werror -Wno-padded
 LDFLAGS	+= -ltls
 
 DWS_OBJ = dws.o
