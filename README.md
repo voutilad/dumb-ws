@@ -25,6 +25,8 @@ export LDFLAGS=$(pkg-config --libs libbsd-overlay)
 make
 ```
 
+As of now, you also need [libtls](https://man.openbsd.org/tls_init.3) from [libressl](https://libressl.org). Depending on your operating system, this might be easy to get via packages or you need to build a release yourself. (It's not hard...honestly...but be careful as `make install` might replace your existin OpenSSL version.)
+
 If you're integrating dumb-ws (heavens help you), all you should need are `dws.c` and `dws.h` so just drop those into whatever project you want to taint with this abomination. Everything else here is just for testing.
 
 ## lolwut, testing?
@@ -42,6 +44,8 @@ These are mostly here to remind myself why I'm bothering.
 I'm a slacker and only support [libtls](https://man.openbsd.org/tls_init.3) from the [libressl](https://libressl.org) project. Figure it out yourself, for now...I'll update things for Linux soon.
 
 I've included a test https nodejs server, so check [nodejs-test/wss.js](./nodejs-test/wss.js). You need some dumb self-signed certs, so run `make certs` and put in the password `password` (or change it in the code...ok?).
+
+I've also started testing with [relayd(8)](http://man.openbsd.org/relayd) as a TLS accelerator.
 
 ## soooo, proxy?
 Yes, this is actually a priority for me after TLS. Which means now.
