@@ -25,7 +25,7 @@ main(int argc, char **argv)
 {
 	int ch, ret;
 	int use_tls = 0;
-	size_t len;
+	ssize_t len;
 	char *host = "localhost", *port = "8080";
 	struct websocket ws;
 
@@ -88,8 +88,8 @@ main(int argc, char **argv)
 		errx(-ret, "dumb_close");
 
 	// Our socket should be closed now
-	ret = dumb_recv(&ws, buf, sizeof(buf));
-	if (ret != -2)
+	len = dumb_recv(&ws, buf, sizeof(buf));
+	if (len != -2)
 		errx(7, "shutdown: socket not closed");
 
 	return 0;

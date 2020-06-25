@@ -18,8 +18,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
 
+#include <limits.h>
 #include <err.h>
 #include <errno.h>
 
@@ -28,6 +28,10 @@
 #include <resolv.h>
 #include <sys/socket.h>
 #include <tls.h>
+
+#ifdef __linux__
+#include <bsd/bsd.h>
+#endif
 
 #include "dws.h"
 
@@ -87,6 +91,74 @@ dumb_mask(uint8_t mask[4])
 	mask[1] = (r & 0x00FF0000) >> 16;
 	mask[2] = (r & 0x0000FF00) >> 8;
 	mask[3] = (r & 0x000000FF);
+}
+
+/*
+ * Safely read as much as we can into a given buffer since it may take
+ * multiple read(2)/tls_read(3) calls.
+ */
+static ssize_t
+ws_read(struct websocket *ws, void *buf, size_t buflen)
+{
+	ssize_t ret = 0;
+	char *_buf = (char*) buf;
+
+	if (buflen > INT_MAX)
+		errx(1, "ws_read: buflen too large");
+
+	if (ws->ctx) {
+		do {
+			ret = tls_read(ws->ctx, _buf, buflen);
+		} while (ret == TLS_WANT_POLLIN);
+	} else {
+		ret = read(ws->s, _buf, buflen);
+	}
+
+	// TODO: figure out how we want to handle errors
+	if (ret < 0) {
+		if (ws->ctx)
+			errx(1, "tls_read: %s", tls_error(ws->ctx));
+		errx(1, "socket read error");
+	}
+
+	return ret;
+}
+
+/*
+ * Safely write the given buf up to buflen via the socket.
+ */
+static ssize_t
+ws_write(struct websocket *ws, void *buf, size_t buflen)
+{
+	ssize_t _buflen, ret, len = 0;
+	char *_buf;
+
+	if (buflen > INT_MAX)
+		errx(1, "%s: buflen too large", __func__);
+
+	_buf = (char *)buf;
+	_buflen = (ssize_t) buflen;
+
+	if (ws->ctx) {
+		while (_buflen > 0) {
+			ret = tls_write(ws->ctx, _buf, (size_t) _buflen);
+			if (ret == TLS_WANT_POLLOUT)
+				continue;
+			if (ret < 0)
+				errx(1, "tls_write: %s", tls_error(ws->ctx));
+
+			_buf += ret;
+			_buflen -= ret;
+			len += ret;
+		}
+	} else {
+		// XXX: for now, we assume synchronous writes
+		len = write(ws->s, _buf, (size_t) _buflen);
+		if (len < 0)
+			errx(1, "socket write error");
+	}
+
+	return len;
 }
 
 /*
@@ -240,7 +312,7 @@ dumb_handshake(struct websocket *ws, char *host, char *path)
 
 	buf = calloc(sizeof(char), HANDSHAKE_BUF_SIZE);
 	if (!buf)
-		err(errno, "calloc");
+		err(1, "%s: calloc", __func__);
 
 	memset(key, 0, sizeof(key));
 	dumb_key(key);
@@ -248,35 +320,22 @@ dumb_handshake(struct websocket *ws, char *host, char *path)
 	ret = snprintf(buf, HANDSHAKE_BUF_SIZE, HANDSHAKE_TEMPLATE,
 	    path, host, key);
 	if (ret < 1) {
-		free(buf);
-		return -1;
+		ret = -1;
+		goto out;
 	}
 
-	if (ws->ctx)
-		len = tls_write(ws->ctx, buf, (size_t) ret);
-	else
-		len = write(ws->s, buf, (size_t) ret);
-
+	len = ws_write(ws, buf, (size_t) ret);
 	if (len < 1) {
-		free(buf);
-		return -2;
+		ret = -2;
+		goto out;
 	}
 
 	memset(buf, 0, HANDSHAKE_BUF_SIZE);
-
-	if (ws->ctx) {
-		do {
-			len = tls_read(ws->ctx, buf, HANDSHAKE_BUF_SIZE);
-		} while (len == TLS_WANT_POLLIN);
-	}
-	else {
-		// XXX: do we need safey checks?
-		len = read(ws->s, buf, HANDSHAKE_BUF_SIZE);
-	}
+	len = ws_read(ws, buf, HANDSHAKE_BUF_SIZE);
 
 	if (len < 1) {
-		free(buf);
-		return -3;
+		ret = -3;
+		goto out;
 	}
 
 	/* XXX: If we gave a crap, we'd validate the returned key per the
@@ -286,6 +345,7 @@ dumb_handshake(struct websocket *ws, char *host, char *path)
 	if (ret)
 		ret = -4;
 
+out:
 	free(buf);
 	return ret;
 }
@@ -454,11 +514,7 @@ dumb_recv(struct websocket *ws, void *out, size_t len)
 	if (!frame)
 		return -1;
 
-	if (ws->ctx)
-		n = tls_read(ws->ctx, frame, len + FRAME_MAX_HEADER_SIZE + 1);
-	else
-		n = read(ws->s, frame, len + FRAME_MAX_HEADER_SIZE + 1);
-
+	n = ws_read(ws, frame, len + FRAME_MAX_HEADER_SIZE + 1);
 	if (n < 1) {
 		free(frame);
 		return -2;
@@ -518,21 +574,13 @@ dumb_ping(struct websocket *ws)
 	len = init_frame(frame, PING, mask, 0);
 	frame[++len] = '\0';
 
-	if (ws->ctx)
-		len = tls_write(ws->ctx, frame, (size_t) len);
-	else
-		len = write(ws->s, frame, (size_t) len);
-
+	len = ws_write(ws, frame, (size_t) len);
 	if (len < 1)
 		return -1;
 
 	memset(frame, 0, sizeof(frame));
 
-	if (ws->ctx)
-		len = tls_read(ws->ctx, frame, (size_t) len);
-	else
-		len = read(ws->s, frame, (size_t) len);
-
+	len = ws_read(ws, frame, (size_t) len);
 	if (len < 1)
 		return -2;
 
@@ -569,7 +617,6 @@ dumb_ping(struct websocket *ws)
 int
 dumb_close(struct websocket *ws)
 {
-	int ret;
 	ssize_t len;
 	uint8_t mask[4];
 	uint8_t frame[128];
@@ -580,33 +627,18 @@ dumb_close(struct websocket *ws)
 	len = init_frame(frame, CLOSE, mask, 0);
 	frame[++len] = '\0';
 
-	if (ws->ctx)
-		len = tls_write(ws->ctx, frame, (size_t) len);
-	else
-		len = write(ws->s, frame, (size_t) len);
-
-
+	len = ws_write(ws, frame, (size_t) len);
 	if (len < 1)
 		return -1;
 
 	memset(frame, 0, sizeof(frame));
 
-	if (ws->ctx)
-		len = tls_read(ws->ctx, frame, (size_t) len);
-	else
-		len = read(ws->s, frame, (size_t) len);
-
+	len = ws_read(ws, frame, (size_t) len);
 	if (len < 1)
 		return -2;
 
 	if (frame[0] != (0x80 + CLOSE))
-		return -3;
-
-	if (ws->ctx) {
-		do {
-			ret = tls_close(ws->ctx);
-		} while (ret == TLS_WANT_POLLIN || ret == TLS_WANT_POLLOUT);
-	}
+		tls_close(ws->ctx);
 
 	if (shutdown(ws->s, SHUT_RDWR))
 		return -4;
