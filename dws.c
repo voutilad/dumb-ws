@@ -17,6 +17,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,17 +63,34 @@ crap(int code, const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	fprintf(stderr, "oh crap! %s", buf);
+	fprintf(stderr, "oh crap! %s\n", buf);
 	exit(code);
+}
+
+static void
+init_rng(void)
+{
+	// XXX: why doesn't every platform just have arc4random(3)?!
+	int fd;
+	ssize_t len;
+	char state[256];
+
+	fd = open("/dev/urandom", O_RDONLY);
+	len = read(fd, state, sizeof(state));
+	if (len < (ssize_t) sizeof(state))
+		crap(1, "%s: failed to fill state buffer", __func__);
+
+	initstate(time(NULL), state, sizeof(state));
+	rng_initialized = 1;
+	close(fd);
 }
 
 static int
 choose(unsigned int upper_bound)
 {
-	if (!rng_initialized) {
-		srandom(time(NULL));
-		rng_initialized = 1;
-	}
+	if (!rng_initialized)
+		init_rng();
+
 	return (int) random() % upper_bound;
 }
 
@@ -108,10 +126,8 @@ dumb_mask(uint8_t mask[4])
 {
 	uint32_t r;
 
-	if (!rng_initialized) {
-		srandom(time(NULL));
-		rng_initialized = 1;
-	}
+	if (!rng_initialized)
+		init_rng();
 	r = random();
 
 	mask[0] = r >> 24;
