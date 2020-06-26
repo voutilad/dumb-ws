@@ -3,3 +3,4 @@ dws
 client_test
 .pem
 *.pem
+*.core
