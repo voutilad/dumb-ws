@@ -60,7 +60,6 @@ main(int argc, char **argv)
 	assert(0 == dumb_handshake(&ws, host, "/"));
 	printf("handshake complete\n");
 
-	// don't send the null byte
 	printf("sending small payload (%zu bytes)\n", SHORT_MSG_LEN);
 	len = dumb_send(&ws, &SHORT_MSG, SHORT_MSG_LEN);
 	assert(len == (ssize_t) SHORT_MSG_LEN + 6);
