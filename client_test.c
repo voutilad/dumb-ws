@@ -28,7 +28,7 @@ main(int argc, char **argv)
 	int ch;
 	int use_tls = 0;
 	ssize_t len;
-	char *host = "localhost", *port = "8080";
+	char *host = "localhost", *port = "8000";
 	char out[1024];
 	struct websocket ws;
 

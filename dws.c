@@ -55,7 +55,7 @@ static const char HANDSHAKE_TEMPLATE[] =
 
 static const char B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-__dead static void
+static void __attribute__((noreturn))
 crap(int code, const char *fmt, ...)
 {
 	char buf[512];
@@ -341,27 +341,20 @@ int
 dumb_handshake(struct websocket *ws, char *host, char *path)
 {
 	int len, ret = 0;
-	char key[25];
-	char *buf;
-
-	buf = calloc(sizeof(char), HANDSHAKE_BUF_SIZE);
-	if (!buf)
-		crap(1, "%s: calloc: ", __func__, strerror(errno));
+	char key[25], buf[HANDSHAKE_BUF_SIZE];
 
 	memset(key, 0, sizeof(key));
 	dumb_key(key);
 
-	len = snprintf(buf, HANDSHAKE_BUF_SIZE, HANDSHAKE_TEMPLATE,
+	len = snprintf(buf, sizeof(buf), HANDSHAKE_TEMPLATE,
 	    path, host, key);
-	if (len < 1) {
-		ret = -1;
-		goto out;
-	}
+	if (len < 1)
+		return -1;
 
 	ws_write(ws, buf, (size_t) len);
 
-	memset(buf, 0, HANDSHAKE_BUF_SIZE);
-	ws_read(ws, buf, HANDSHAKE_BUF_SIZE);
+	memset(buf, 0, sizeof(buf));
+	ws_read(ws, buf, sizeof(buf));
 
 	/* XXX: If we gave a crap, we'd validate the returned key per the
 	 * requirements of RFC6455 sec. 4.1, but we don't.
@@ -369,8 +362,6 @@ dumb_handshake(struct websocket *ws, char *host, char *path)
 	if (memcmp(server_handshake, buf, sizeof(server_handshake) - 1))
 		ret = -2;
 
-out:
-	free(buf);
 	return ret;
 }
 
@@ -488,7 +479,7 @@ dumb_send(struct websocket *ws, void *payload, size_t len)
 
 	// We need payload size + 14 bytes minimum, but pad a little extra
 	frame = calloc(sizeof(uint8_t), len + 16);
-	if (!frame)
+	if (frame == NULL)
 		return -1;
 
 	memset(mask, 0, sizeof(mask));
@@ -535,7 +526,7 @@ dumb_recv(struct websocket *ws, void *out, size_t len)
 	ssize_t offset = 0, n = 0;
 
 	frame = calloc(sizeof(uint8_t), len + FRAME_MAX_HEADER_SIZE + 1);
-	if (!frame)
+	if (frame == NULL)
 		return -1;
 
 	n = ws_read(ws, frame, len + FRAME_MAX_HEADER_SIZE + 1);
