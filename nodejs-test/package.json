@@ -1,10 +1,10 @@
 {
-  "name": "server-test",
+  "name": "dumb-ws-nodejs-test",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Server-side test for Dumb Websocket Client",
+  "main": "ws.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node ws.js"
   },
   "author": "",
   "license": "ISC",
