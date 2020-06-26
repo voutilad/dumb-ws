@@ -1,4 +1,4 @@
-CFLAGS	+= -Wall -Werror -Wno-padded
+CFLAGS	+= -Wall -Werror -Wno-padded -Wno-format-nonliteral
 LDFLAGS	+= -ltls
 
 DWS_OBJ = dws.o

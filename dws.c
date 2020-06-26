@@ -55,15 +55,17 @@ static const char HANDSHAKE_TEMPLATE[] =
 
 static const char B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-static void
+__dead static void
 crap(int code, const char *fmt, ...)
 {
+	char buf[512];
 	va_list ap;
 
 	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
+	fprintf(stderr, "oh crap! %s", buf);
 	exit(code);
 }
 
@@ -75,10 +77,9 @@ choose(unsigned int upper_bound)
 		srandom(time(NULL));
 		rng_initialized = 1;
 	}
-	int r = (int) random();
-	return r % upper_bound;
+	return (int) random() % upper_bound;
 #else
-	return arc4random_uniform(upper_bound);
+	return (int) arc4random_uniform(upper_bound);
 #endif
 }
 
