@@ -21,18 +21,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <limits.h>
 #include <errno.h>
 
-
 #include <tls.h>
-
-#ifdef WITHOUT_ARC4RANDOM
-#include <time.h>
-static int rng_initialized = 0;
-#endif
 
 #include "dws.h"
 
@@ -53,6 +48,8 @@ static const char HANDSHAKE_TEMPLATE[] =
     "Sec-WebSocket-Protocol: dumb-ws\r\n"
     "Sec-WebSocket-Version: 13\r\n\r\n";
 
+static int rng_initialized = 0;
+
 static const char B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 static void __attribute__((noreturn))
@@ -72,15 +69,11 @@ crap(int code, const char *fmt, ...)
 static int
 choose(unsigned int upper_bound)
 {
-#ifdef WITHOUT_ARC4RANDOM
 	if (!rng_initialized) {
 		srandom(time(NULL));
 		rng_initialized = 1;
 	}
 	return (int) random() % upper_bound;
-#else
-	return (int) arc4random_uniform(upper_bound);
-#endif
 }
 
 /*
@@ -115,15 +108,12 @@ dumb_mask(uint8_t mask[4])
 {
 	uint32_t r;
 
-#ifdef WITHOUT_ARC4RANDOM
 	if (!rng_initialized) {
 		srandom(time(NULL));
 		rng_initialized = 1;
 	}
 	r = random();
-#else
-	r = arc4random();
-#endif
+
 	mask[0] = r >> 24;
 	mask[1] = (r & 0x00FF0000) >> 16;
 	mask[2] = (r & 0x0000FF00) >> 8;

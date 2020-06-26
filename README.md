@@ -15,19 +15,11 @@ Yeah, this in no way is going to be a fully [RFC6455](https://tools.ietf.org/htm
 Seriously, it's _Binary Frames or Bust_ around here so you're on your own and dumb-ws isn't going to hold your hand.
 
 ## ok, i'll bite...what's up?
-I'm developing on OpenBSD, but using mostly standard libc stuff. You'll still need to have `libbsd` if on Linux because I use `arc4random(3)`. (On debian-like systems, try: `sudo apt install libbsd-dev`.)
-
-```bash
-#!/bin/sh
-# for you linux nerds
-export CFLAGS=$(pkg-config --cflags libbsd-overlay)
-export LDFLAGS=$(pkg-config --libs libbsd-overlay)
-make
-```
-
-As of now, you also need [libtls](https://man.openbsd.org/tls_init.3) from [libressl](https://libressl.org). Depending on your operating system, this might be easy to get via packages or you need to build a release yourself. (It's not hard...honestly...but be careful as `make install` might replace your existin OpenSSL version.)
+As of now, you also need [libtls](https://man.openbsd.org/tls_init.3) from [libressl](https://libressl.org). Depending on your operating system, this might be easy to get via packages or you need to build a release yourself. (It's not hard...honestly...but be careful as `make install` might replace your existing OpenSSL version.)
 
 If you're integrating dumb-ws (heavens help you), all you should need are `dws.c` and `dws.h` so just drop those into whatever project you want to taint with this abomination. Everything else here is just for testing.
+
+Seriously...if your project already can link to `libtls` all you need to do is copy the 2 files I said and be done with it! You don't need to build anything here.
 
 ## lolwut, testing?
 I'm testing against some popular (for some definition of "popular") websocket implementations in:
@@ -43,18 +35,16 @@ These are mostly here to remind myself why I'm bothering.
 ## uhhhh, TLS?
 I'm a slacker and only support [libtls](https://man.openbsd.org/tls_init.3) from the [libressl](https://libressl.org) project. Figure it out yourself, for now...I'll update things for Linux soon.
 
-I've included a test https nodejs server, so check [nodejs-test/wss.js](./nodejs-test/wss.js). You need some dumb self-signed certs, so run `make certs` and put in the password `password` (or change it in the code...ok?).
-
 I've also started testing with [relayd(8)](http://man.openbsd.org/relayd) as a TLS accelerator.
 
-## soooo, proxy?
-Yes, this is actually a priority for me after TLS. Which means now.
+## soooo, http proxy support?
+Yes, this is actually a priority for me after TLS. Which means nowish?
 
 ## um, auth?
-Maybe I'll add basic-auth support. After proxy support.
+Maybe I'll add basic-auth support. After proxy support. Or not...cause if you have TLS why not roll your own protocol post-connection?
 
 ## abwaah? close on invalid data?
 Per sec. 10.7, I might add in closure on bad data. _Might._ I'll probably stop caring though.
 
 # soooo, the License?
-Why would you even think of using this horrible mess? Fine, ISC. Buyer beware: you get what you pay for.
+Why would you even think of using this horrible mess? Fine, ISC for my code unless stated otherwise. Buyer beware: you get what you pay for.
