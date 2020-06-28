@@ -1,0 +1,9 @@
+image: alpine/edge
+packages:
+- go
+sources:
+- https://git.sr.ht/~sircmpwn/getopt
+tasks:
+- test: |
+    cd getopt
+    go test
