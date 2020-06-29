@@ -15,6 +15,9 @@
  */
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #define _CRT_RAND_S
 #include <WinSock2.h>
 #include <WS2tcpip.h>
@@ -182,7 +185,7 @@ ws_read(struct websocket *ws, void *buf, size_t buflen)
 
 	// TODO: figure out how we want to handle errors...
 	// win32 spits out a different error than posix systems, btw.
-	
+
 	return ret;
 }
 
