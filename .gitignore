@@ -4,3 +4,4 @@ client_test
 .pem
 *.pem
 *.core
+client_test.exe

@@ -13,9 +13,16 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+
+#ifdef _WIN32
+#define _CRT_RAND_S
+#include <WinSock2.h>
+#include <WS2tcpip.h>
+#else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#endif
 
 #include <fcntl.h>
 #include <stdarg.h>
@@ -67,9 +74,24 @@ crap(int code, const char *fmt, ...)
 	exit(code);
 }
 
+static uint32_t
+portable_random(void)
+{
+#ifdef _WIN32
+	errno_t err;
+	uint32_t r = 0;
+	err = rand_s(&r);
+	if (err != 0)
+		crap(err, "%s: rand_s failed", __func__);
+	return r;
+#else
+	return random();
+#endif
+}
 static void
 init_rng(void)
 {
+#ifndef _WIN32
 	// XXX: why doesn't every platform just have arc4random(3)?!
 	int fd;
 	ssize_t len;
@@ -81,8 +103,9 @@ init_rng(void)
 		crap(1, "%s: failed to fill state buffer", __func__);
 
 	initstate(time(NULL), state, sizeof(state));
-	rng_initialized = 1;
 	close(fd);
+#endif
+	rng_initialized = 1;
 }
 
 static int
@@ -91,7 +114,7 @@ choose(unsigned int upper_bound)
 	if (!rng_initialized)
 		init_rng();
 
-	return (int) random() % upper_bound;
+	return (int) portable_random() % upper_bound;
 }
 
 /*
@@ -128,7 +151,7 @@ dumb_mask(uint8_t mask[4])
 
 	if (!rng_initialized)
 		init_rng();
-	r = random();
+	r = portable_random();
 
 	mask[0] = r >> 24;
 	mask[1] = (r & 0x00FF0000) >> 16;
@@ -157,13 +180,9 @@ ws_read(struct websocket *ws, void *buf, size_t buflen)
 		ret = read(ws->s, _buf, buflen);
 	}
 
-	// TODO: figure out how we want to handle errors
-	if (ret < 0) {
-		if (ws->ctx)
-			crap(1, "tls_read: %s", tls_error(ws->ctx));
-		crap(1, "socket read error");
-	}
-
+	// TODO: figure out how we want to handle errors...
+	// win32 spits out a different error than posix systems, btw.
+	
 	return ret;
 }
 
@@ -394,6 +413,14 @@ dumb_connect(struct websocket *ws, char *host, char *port)
 	int s;
 	struct addrinfo hints, *res;
 
+#ifdef _WIN32
+	int ret;
+	WSADATA wsaData = {0};
+	ret = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if (ret)
+		crap(1, "WSAStartup failed: %d", ret);
+#endif
+
 	s = socket(AF_INET, SOCK_STREAM, 0);
 	if (s < 0)
 		return -1;
@@ -438,9 +465,10 @@ dumb_connect_tls(struct websocket *ws, char *host, char *port, int insecure)
 {
 	int ret;
 	ret = dumb_connect(ws, host, port);
+	// TODO: better error handling...for now we hard fail for debugging
 	if (ret)
-		return ret;
-
+		crap(ret, "dumb_connect failed");
+	
 	ws->ctx = tls_client();
 	if (ws->ctx == NULL)
 		crap(1, "%s: tls_client failure", __func__);
@@ -614,6 +642,12 @@ dumb_ping(struct websocket *ws)
 	return 0;
 }
 
+#ifdef _WIN32
+#define HOW SD_BOTH
+#else
+#define HOW SHUT_RDWR
+#endif
+
 /*
  * dumb_close
  *
@@ -660,7 +694,7 @@ dumb_close(struct websocket *ws)
 	if (ws->ctx)
 		tls_close(ws->ctx);
 
-	if (shutdown(ws->s, SHUT_RDWR))
+	if (shutdown(ws->s, HOW))
 		return -4;
 
 	return 0;

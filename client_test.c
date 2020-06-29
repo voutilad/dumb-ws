@@ -2,10 +2,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#ifndef _WIN32
 #include <sys/socket.h>
+#define SSIZE_T_PARAM "%ld"
+#else
+#include <WinSock2.h>
+#include <stdint.h>
+#define SSIZE_T_PARAM "%lld"
+#endif
 
 #include <assert.h>
 #include <errno.h>
+#include <tls.h>
 
 #include "dws.h"
 
@@ -25,7 +34,7 @@ static uint8_t buf[1024];
 int
 main(int argc, char **argv)
 {
-	int ch;
+	int ch, ret;
 	int use_tls = 0;
 	ssize_t len;
 	char *host = "localhost", *port = "8000";
@@ -53,9 +62,12 @@ main(int argc, char **argv)
 
 	memset(&ws, 0, sizeof(struct websocket));
 	if (use_tls)
-		assert(0 == dumb_connect_tls(&ws, host, port, 1));
+		ret = dumb_connect_tls(&ws, host, port, 1);
 	else
-		assert(0 == dumb_connect(&ws, host, port));
+		ret = dumb_connect(&ws, host, port);
+	printf("ret: %d, %s\n", ret, tls_error(ws.ctx));
+	assert(0 == ret);
+
 
 	assert(0 == dumb_handshake(&ws, host, "/"));
 	printf("handshake complete\n");
@@ -63,26 +75,30 @@ main(int argc, char **argv)
 	printf("sending small payload (%zu bytes)\n", SHORT_MSG_LEN);
 	len = dumb_send(&ws, &SHORT_MSG, SHORT_MSG_LEN);
 	assert(len == (ssize_t) SHORT_MSG_LEN + 6);
-	printf("sent %ld bytes (header + payload)\n", len);
+	printf("sent " SSIZE_T_PARAM " bytes (header + payload)\n", len);
 
 	memset(buf, 0, sizeof(buf));
 	len = dumb_recv(&ws, buf, sizeof(buf));
 	snprintf(out, sizeof(out), "%s", buf);
-	printf("received payload of %ld bytes:\n---\n%s\n---\n", len, out);
+	printf("received payload of " SSIZE_T_PARAM " bytes:\n---\n%s\n---\n",
+		len, out);
 
 	printf("sending large payload (%zu bytes)\n", LONG_MSG_LEN);
 	len = dumb_send(&ws, &LONG_MSG, LONG_MSG_LEN);
 	assert(len == (ssize_t) LONG_MSG_LEN + 8);
-	printf("sent %ld bytes (header + payload)\n", len);
+	printf("sent " SSIZE_T_PARAM " bytes (header + payload)\n", len);
 
 	memset(buf, 0, sizeof(buf));
 	len = dumb_recv(&ws, buf, sizeof(buf));
 	snprintf(out, sizeof(out), "%s", buf);
-	printf("received payload of %ld bytes:\n---\n%s\n---\n", len, out);
+	printf("received payload of " SSIZE_T_PARAM " bytes:\n---\n%s\n---\n",
+		len, out);
 
 	assert(0 == dumb_ping(&ws));
+	printf("PINGed and got PONG frame!\n");
 
 	assert(0 == dumb_close(&ws));
+	printf("sent a CLOSE frame!\n");
 
 	// Our socket should be closed now
 	assert(-2 == dumb_recv(&ws, buf, sizeof(buf)));
