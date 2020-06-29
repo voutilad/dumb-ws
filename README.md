@@ -21,6 +21,8 @@ If you're integrating dumb-ws (heavens help you), all you should need are `dws.c
 
 Seriously...if your project already can link to `libtls` all you need to do is copy the 2 files I said and be done with it! You don't need to build anything here.
 
+> Note: on some platforms that provide libressl via package management, `libtls` might be installed as `liblibretls`
+
 ## lolwut, testing?
 I'm testing against some popular (for some definition of "popular") websocket implementations in:
 - [Go](./go-test) -- run `go build` and run the resulting binary
@@ -28,6 +30,11 @@ I'm testing against some popular (for some definition of "popular") websocket im
 - [Rust](./rust-test) -- run `cargo run`
 
 > Note on Rust: you might need to set `OPENSSL_LIB_DIR` and `OPENSSL_INCLUDE_DIR` on OpenBSD to build...ymmv.
+
+I also test on the following platforms:
+- OpenBSD-current
+- Ubuntu Linux 20.04
+- msys64 on Win10
 
 # never asked questions (naq)
 These are mostly here to remind myself why I'm bothering.

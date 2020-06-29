@@ -1,5 +1,10 @@
 CFLAGS	+= -O2 -Wall -Werror -Wno-padded -Wno-format-nonliteral
-LDFLAGS	+= -ltls
+
+LDFLAGS != 	if [ X"$(OS)" = X"Windows_NT" ]; then \
+				echo ${LDFLAGS} -llibretls -lws2_32 ; \
+			else \
+				echo ${LDFLAGS} -ltls ;\
+			fi
 
 DWS_OBJ = dws.o
 DWS_TEST = client_test

@@ -34,7 +34,7 @@ static uint8_t buf[1024];
 int
 main(int argc, char **argv)
 {
-	int ch, ret;
+	int ch;
 	int use_tls = 0;
 	ssize_t len;
 	char *host = "localhost", *port = "8000";
@@ -62,12 +62,9 @@ main(int argc, char **argv)
 
 	memset(&ws, 0, sizeof(struct websocket));
 	if (use_tls)
-		ret = dumb_connect_tls(&ws, host, port, 1);
+		assert(0 == dumb_connect_tls(&ws, host, port, 1));
 	else
-		ret = dumb_connect(&ws, host, port);
-	printf("ret: %d, %s\n", ret, tls_error(ws.ctx));
-	assert(0 == ret);
-
+		assert(0 == dumb_connect(&ws, host, port));
 
 	assert(0 == dumb_handshake(&ws, host, "/"));
 	printf("handshake complete\n");
@@ -102,6 +99,7 @@ main(int argc, char **argv)
 
 	// Our socket should be closed now
 	assert(-2 == dumb_recv(&ws, buf, sizeof(buf)));
+	printf("socket looks closed!\n");
 
 	return 0;
 }
