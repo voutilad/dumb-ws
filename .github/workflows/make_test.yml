@@ -20,10 +20,10 @@ jobs:
         run: tar xvfz libressl-${LIBRESSL_VERSION}.tar.gz
       - name: configure libressl
         run: ./configure
-        working-directory: libressl-${{LIBRESSL_VERSION}}
+        working-directory: libressl-${{env.LIBRESSL_VERSION}}
       - name: install libressl
         run: make && sudo make install
-        working-directory: libressl-${{LIBRESSL_VERSION}}
+        working-directory: libressl-${{env.LIBRESSL_VERSION}}
 
       - uses: actions/checkout@v2
       - name: back to project
