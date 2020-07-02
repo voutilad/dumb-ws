@@ -5,24 +5,27 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      LIBRESSL_VERSION: 3.1.3
 
     steps:
       - name: apt-update
         run: sudo apt-get update
       - name: install dependencies
         run: sudo apt-get -yf install automake autoconf golang
+
       - name: download libressl
-        run: wget https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-3.1.3.tar.gz
+        run: wget https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-${{LIBRESSL_VERSION}}.tar.gz
       - name: unpack libressl
-        run: tar xvfz libressl-3.1.3.tar.gz
-      - name: cd libressl-3.1.3
-        run: cd libressl-3.1.3
+        run: tar xvfz libressl-${{LIBRESSL_VERSION}}.tar.gz
       - name: configure libressl
         run: ./configure
-      - name: make libressl
-        run: make
+        working-directory: libressl-${{LIBRESSL_VERSION}}
       - name: install libressl
-        run: sudo make install
+        run: make && sudo make install
+        working-directory: libressl-${{LIBRESSL_VERSION}}
+
+      - uses: actions/checkout@v2
       - name: back to project
         run: cd ..
       - name: make dumb-ws
