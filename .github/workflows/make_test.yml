@@ -1,0 +1,35 @@
+name: Make and Test
+
+on:
+  push:
+    branches: *
+  pull_request:
+    branches: *
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: apt-update
+        run: sudo apt-get update
+      - name: install dependencies
+        run: sudo apt-get -yf install automake autoconf golang
+      - name: download libressl
+        run: wget https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-3.1.3.tar.gz
+      - name: unpack libressl
+        run: tar xvfz libressl-3.1.3.tar.gz
+      - name: cd libressl-3.1.3
+        run: cd libressl-3.1.3
+      - name: configure libressl
+        run: ./configure
+      - name: make libressl
+        run: make
+      - name: install libressl
+        run: sudo make install
+      - name: back to project
+        run: cd ..
+      - name: make dumb-ws
+        run: make
+      - name: test dumb-ws
+        run: make test

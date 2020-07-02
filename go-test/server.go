@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"git.sr.ht/~sircmpwn/getopt"
 	ws "github.com/gorilla/websocket"
@@ -59,16 +60,22 @@ func main() {
 	useTls := false
 	port := os.Getenv("PORT")
 	host := os.Getenv("HOST")
+	cert := "cert.pem"
+	key := "key.pem"
 
-	opts, _, err := getopt.Getopts(os.Args, "eth:p:")
+	opts, _, err := getopt.Getopts(os.Args, "c:ek:th:p:")
 	if err != nil {
 		panic(err)
 	}
 
 	for _, opt := range opts {
 		switch opt.Option {
+		case 'c':
+			cert = opt.Value
 		case 'e':
 			echo = true
+		case 'k':
+			key = opt.Value
 		case 't':
 			useTls = true
 		case 'h':
@@ -84,12 +91,14 @@ func main() {
 	if host == "" {
 		host = DefaultHost
 	}
+	cert = filepath.Clean(cert)
+	key = filepath.Clean(key)
 
 	log.Printf("starting server on port %s", port)
 	http.HandleFunc("/", handler)
 
 	if useTls {
-		err := http.ListenAndServeTLS(host+":"+port, "../cert.pem", "../key.pem", nil)
+		err := http.ListenAndServeTLS(host+":"+port, cert, key, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
