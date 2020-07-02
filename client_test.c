@@ -69,6 +69,9 @@ main(int argc, char **argv)
 	assert(0 == dumb_handshake(&ws, host, "/"));
 	printf("handshake complete\n");
 
+	assert(0 == dumb_ping(&ws));
+	printf("PINGed and got PONG frame!\n");
+
 	printf("sending small payload (%zu bytes)\n", SHORT_MSG_LEN);
 	len = dumb_send(&ws, &SHORT_MSG, SHORT_MSG_LEN);
 	assert(len == (ssize_t) SHORT_MSG_LEN + 6);
@@ -91,10 +94,8 @@ main(int argc, char **argv)
 	printf("received payload of " SSIZE_T_PARAM " bytes:\n---\n%s\n---\n",
 		len, out);
 
-	assert(0 == dumb_ping(&ws));
-	printf("PINGed and got PONG frame!\n");
-
-	assert(0 == dumb_close(&ws));
+	dumb_close(&ws);
+	//assert(0 == dumb_close(&ws));
 	printf("sent a CLOSE frame!\n");
 
 	// Our socket should be closed now
