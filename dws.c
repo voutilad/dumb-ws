@@ -251,7 +251,7 @@ ws_write(struct websocket *ws, void *buf, size_t buflen)
  *    +---------------------------------------------------------------+
  */
 static ssize_t
-init_frame(uint8_t *frame, enum FRAME_OPCODE type, uint8_t mask[4], size_t len)
+init_frame(uint8_t *frame, enum ws_opcode opcode, uint8_t mask[4], size_t len)
 {
 	int idx = 0;
 	uint16_t payload;
@@ -260,7 +260,7 @@ init_frame(uint8_t *frame, enum FRAME_OPCODE type, uint8_t mask[4], size_t len)
 	if (len > (1 << 24))
 		return -1;
 
-	frame[0] = (uint8_t) (0x80 + type);
+	frame[0] = (uint8_t) (0x80 + opcode);
 	if (len < 126) {
 		// The trivial "7 bit" payload case
 		frame[1] = 0x80 + (uint8_t) len;
@@ -471,7 +471,7 @@ dumb_connect_tls(struct websocket *ws, char *host, char *port, int insecure)
 	// TODO: better error handling...for now we hard fail for debugging
 	if (ret)
 		crap(ret, "dumb_connect failed");
-	
+
 	ws->ctx = tls_client();
 	if (ws->ctx == NULL)
 		crap(1, "%s: tls_client failure", __func__);

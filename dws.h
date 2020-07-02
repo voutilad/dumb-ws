@@ -27,12 +27,11 @@
 
 #include <sys/types.h>
 
-
 /*
  * We only do Binary frames. Why? You might ask...
  * Well Text frames require utf-8 support, which is hella gross.
  */
-enum FRAME_OPCODE {
+enum ws_opcode {
 	BINARY	= 0x2,
 	CLOSE	= 0x8,
 	PING	= 0x9,
