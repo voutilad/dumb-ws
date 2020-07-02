@@ -14,6 +14,8 @@ const DefaultHost = ""
 
 var upgrader = ws.Upgrader{}
 
+var echo = false
+
 func handler(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -40,10 +42,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			log.Fatal("unsupported TextMessage received!")
 		case ws.BinaryMessage:
 			log.Printf("got: %s", message)
-			out := []byte("You said: ")
-			out = append(out, message...)
-			if c.WriteMessage(ws.BinaryMessage, out) != nil {
-				log.Fatal("WriteMessage: ", err)
+			if echo {
+				out := []byte("You said: ")
+				out = append(out, message...)
+				if c.WriteMessage(ws.BinaryMessage, out) != nil {
+					log.Fatal("WriteMessage: ", err)
+				}
 			}
 		default:
 			log.Fatal("dumb message type: ", msgtype)
@@ -56,13 +60,15 @@ func main() {
 	port := os.Getenv("PORT")
 	host := os.Getenv("HOST")
 
-	opts, _, err := getopt.Getopts(os.Args, "th:p:")
+	opts, _, err := getopt.Getopts(os.Args, "eth:p:")
 	if err != nil {
 		panic(err)
 	}
 
 	for _, opt := range opts {
 		switch opt.Option {
+		case 'e':
+			echo = true
 		case 't':
 			useTls = true
 		case 'h':
