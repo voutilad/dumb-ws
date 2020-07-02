@@ -1,5 +1,6 @@
-# dumb-ws -- a dumb websocket implementation
+# dumb-ws - a dumb websocket implementation
 ![Make and Test](https://github.com/voutilad/dumb-ws/workflows/Make%20and%20Test/badge.svg?branch=master)
+
 I just need an integration shim for [chocolate-doom](https://github.com/voutilad/chocolate-doom) to talk to a data collector I'm going to run in "the cloud." Sadly, most cloud providers force you to use HTTP if you want to run in their "serverless" environments.
 
 Ugh, I know...right?
