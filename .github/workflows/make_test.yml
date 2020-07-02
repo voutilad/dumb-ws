@@ -15,9 +15,9 @@ jobs:
         run: sudo apt-get -yf install automake autoconf golang
 
       - name: download libressl
-        run: wget https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-${{LIBRESSL_VERSION}}.tar.gz
+        run: wget https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-${LIBRESSL_VERSION}.tar.gz
       - name: unpack libressl
-        run: tar xvfz libressl-${{LIBRESSL_VERSION}}.tar.gz
+        run: tar xvfz libressl-${LIBRESSL_VERSION}.tar.gz
       - name: configure libressl
         run: ./configure
         working-directory: libressl-${{LIBRESSL_VERSION}}
