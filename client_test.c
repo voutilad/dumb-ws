@@ -5,7 +5,11 @@
 
 #ifndef _WIN32
 #include <sys/socket.h>
-#define SSIZE_T_PARAM "%ld"
+#if defined(__X86_64__)
+#define SSIZE_T_PARAM "%lld"
+#else
+#define SSIZE_T_PARAM "%d"
+#endif //x86_64
 #else
 #include <WinSock2.h>
 #include <stdint.h>
