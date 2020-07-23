@@ -5,8 +5,8 @@
 
 #ifndef _WIN32
 #include <sys/socket.h>
-#if defined(__X86_64__)
-#define SSIZE_T_PARAM "%lld"
+#if defined(__X86_64__) || defined(__LP64__)
+#define SSIZE_T_PARAM "%ld"
 #else
 #define SSIZE_T_PARAM "%d"
 #endif //x86_64
