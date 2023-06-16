@@ -35,14 +35,13 @@ I'm testing against some popular (for some definition of "popular") websocket im
 
 I also test on the following platforms:
 - OpenBSD-current
-- Ubuntu Linux 20.04
-- msys64 on Win10
+- Debian 12
 
 # never asked questions (naq)
 These are mostly here to remind myself why I'm bothering.
 
 ## uhhhh, TLS?
-I'm a slacker and only support [libtls](https://man.openbsd.org/tls_init.3) from the [libressl](https://libressl.org) project. Figure it out yourself, for now...I'll update things for Linux soon.
+I'm a slacker and only support [libtls](https://man.openbsd.org/tls_init.3) from the [libressl](https://libressl.org) project. If you're using a Linux distro, look for LibreTLS. On Debian 12, you can get it as `libtls-dev`.
 
 I've also started testing with [relayd(8)](http://man.openbsd.org/relayd) as a TLS accelerator.
 
