@@ -54,7 +54,7 @@ struct websocket {
 
 int dumb_connect(struct websocket *ws, char*, char*);
 int dumb_connect_tls(struct websocket *ws, char*, char*, int);
-int dumb_handshake(struct websocket *s, char*, char*);
+int dumb_handshake(struct websocket *s, const char*, const char*, const char*);
 
 ssize_t dumb_send(struct websocket *ws, void*, size_t);
 ssize_t dumb_recv(struct websocket *ws, void*, size_t);

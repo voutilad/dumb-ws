@@ -56,7 +56,7 @@ static const char HANDSHAKE_TEMPLATE[] =
     "Upgrade: websocket\r\n"
     "Connection: upgrade\r\n"
     "Sec-WebSocket-Key: %s\r\n"
-    "Sec-WebSocket-Protocol: dumb-ws\r\n"
+    "Sec-WebSocket-Protocol: %s\r\n"
     "Sec-WebSocket-Version: 13\r\n\r\n";
 
 static int rng_initialized = 0;
@@ -366,7 +366,8 @@ dumb_frame(uint8_t *frame, uint8_t *data, size_t len)
  *  fatal error otherwise.
  */
 int
-dumb_handshake(struct websocket *ws, char *host, char *path)
+dumb_handshake(struct websocket *ws, const char *host, const char *path,
+               const char *proto)
 {
 	int len, ret = 0;
 	char key[25], buf[HANDSHAKE_BUF_SIZE];
@@ -375,7 +376,7 @@ dumb_handshake(struct websocket *ws, char *host, char *path)
 	dumb_key(key);
 
 	len = snprintf(buf, sizeof(buf), HANDSHAKE_TEMPLATE,
-	    path, host, key);
+        path, host, key, proto);
 	if (len < 1)
 		return -1;
 
@@ -526,6 +527,7 @@ dumb_send(struct websocket *ws, void *payload, size_t len)
 	if (frame_len < 0)
 		crap(1, "%s: invalid frame payload length", __func__);
 
+    // TODO: handle under-writes.
 	if (ws->ctx)
 		n = tls_write(ws->ctx, frame, (size_t) frame_len);
 	else
@@ -566,6 +568,7 @@ dumb_recv(struct websocket *ws, void *out, size_t len)
 	if (frame == NULL)
 		return -1;
 
+    // TODO: handle under reads.
 	n = ws_read(ws, frame, len + FRAME_MAX_HEADER_SIZE + 1);
 	if (n < 1) {
 		free(frame);
