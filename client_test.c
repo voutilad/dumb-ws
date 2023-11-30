@@ -70,7 +70,7 @@ main(int argc, char **argv)
 	else
 		assert(0 == dumb_connect(&ws, host, port));
 
-	assert(0 == dumb_handshake(&ws, host, "/"));
+	assert(0 == dumb_handshake(&ws, host, "/", "dumb-ws"));
 	printf("handshake complete\n");
 
 	assert(0 == dumb_ping(&ws));
