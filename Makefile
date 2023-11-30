@@ -1,7 +1,12 @@
-CFLAGS	+= -O2 -Wall -Werror -Wno-padded -Wno-format-nonliteral
+CFLAGS_TLS !=	if [ `uname` = "Darwin" ]; then \
+			pkg-config --cflags libtls ;\
+		fi
+CFLAGS	+= -O2 -Wall -Werror -Wno-padded -Wno-format-nonliteral $(CFLAGS_TLS)
 
 LDFLAGS != 	if [ X"$(OS)" = X"Windows_NT" ]; then \
 				echo ${LDFLAGS} -llibretls -lws2_32 ; \
+			elif [ `uname` = "Darwin" ]; then \
+				pkg-config --libs libtls ; \
 			else \
 				echo ${LDFLAGS} -ltls ;\
 			fi
