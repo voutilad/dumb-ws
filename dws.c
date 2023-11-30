@@ -191,6 +191,8 @@ ws_read(struct websocket *ws, void *buf, size_t buflen)
 
 /*
  * Safely write the given buf up to buflen via the socket.
+ *
+ * XXX: for now failures to write are fatal :X
  */
 static ssize_t
 ws_write(struct websocket *ws, void *buf, size_t buflen)
@@ -204,24 +206,23 @@ ws_write(struct websocket *ws, void *buf, size_t buflen)
 	_buf = (char *)buf;
 	_buflen = (ssize_t) buflen;
 
-	if (ws->ctx) {
-		while (_buflen > 0) {
+    while (_buflen > 0) {
+        if (ws->ctx) {
 			ret = tls_write(ws->ctx, _buf, (size_t) _buflen);
 			if (ret == TLS_WANT_POLLOUT)
 				continue;
 			if (ret < 0)
 				crap(1, "tls_write: %s", tls_error(ws->ctx));
+        } else {
+            ret = write(ws->s, _buf, (size_t) _buflen);
+            if (ret < 0)
+                crap(1, "write: %s", strerror(errno));
+        }
 
-			_buf += ret;
-			_buflen -= ret;
-			len += ret;
-		}
-	} else {
-		// XXX: for now, we assume synchronous writes
-		len = write(ws->s, _buf, (size_t) _buflen);
-		if (len < 0)
-			crap(1, "socket write error");
-	}
+        _buf += ret;
+        _buflen -= ret;
+        len += ret;
+    }
 
 	return len;
 }
