@@ -527,11 +527,7 @@ dumb_send(struct websocket *ws, void *payload, size_t len)
 	if (frame_len < 0)
 		crap(1, "%s: invalid frame payload length", __func__);
 
-    // TODO: handle under-writes.
-	if (ws->ctx)
-		n = tls_write(ws->ctx, frame, (size_t) frame_len);
-	else
-		n = write(ws->s, frame, (size_t) frame_len);
+	n = ws_write(ws, frame, (size_t) frame_len);
 
 	free(frame);
 	return n;
