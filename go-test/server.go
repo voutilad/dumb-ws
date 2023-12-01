@@ -49,6 +49,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				if c.WriteMessage(ws.BinaryMessage, out) != nil {
 					log.Fatal("WriteMessage: ", err)
 				}
+				log.Printf("sent: %s", out)
 			}
 		default:
 			log.Fatal("dumb message type: ", msgtype)
