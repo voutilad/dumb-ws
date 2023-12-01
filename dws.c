@@ -186,10 +186,10 @@ ws_read(struct websocket *ws, void *buf, size_t buflen)
 	while (_buflen > 0) {
 		if (ws->ctx) {
 			sz = tls_read(ws->ctx, _buf, _buflen);
-			if (sz == TLS_WANT_POLLIN)
+			if (sz == TLS_WANT_POLLIN || sz == TLS_WANT_POLLOUT)
 				continue;
-			if (sz < 0)
-				crap(1, "tls_read: %s", tls_error(ws->ctx));
+			else if (sz == -1)
+				return -1;
 		} else {
 			sz = read(ws->s, _buf, _buflen);
 			if (sz == -1 && errno == EAGAIN)
@@ -227,10 +227,10 @@ ws_read_txt(struct websocket *ws, void *buf, size_t buflen)
 	while (_buflen > 0) {
 		if (ws->ctx) {
 			sz = tls_read(ws->ctx, _buf, _buflen);
-			if (sz == TLS_WANT_POLLIN)
+			if (sz == TLS_WANT_POLLIN || sz == TLS_WANT_POLLOUT)
 				continue;
-			if (sz < 0)
-				crap(1, "tls_read: %s", tls_error(ws->ctx));
+			else if (sz == -1)
+				return -1;
 		} else {
 			sz = read(ws->s, _buf, _buflen);
 			if (sz == -1 && errno == EAGAIN)
@@ -282,10 +282,10 @@ ws_write(struct websocket *ws, const void *buf, size_t buflen)
 	while (_buflen > 0) {
 		if (ws->ctx) {
 			sz = tls_write(ws->ctx, _buf, (size_t) _buflen);
-			if (sz == TLS_WANT_POLLOUT)
+			if (sz == TLS_WANT_POLLOUT || sz == TLS_WANT_POLLIN)
 				continue;
-			if (sz < 0)
-				crap(1, "tls_write: %s", tls_error(ws->ctx));
+			else if (sz == -1)
+				return -1;
 		} else {
 			sz = write(ws->s, _buf, (size_t) _buflen);
 			if (sz == -1 && errno == EAGAIN)
@@ -463,7 +463,9 @@ dumb_handshake(struct websocket *ws, const char *host, const char *path,
 		crap(1, "dumb_handshake");
 
 	memset(buf, 0, sizeof(buf));
-	ws_read_txt(ws, buf, sizeof(buf));
+	len = ws_read_txt(ws, buf, sizeof(buf));
+	if (len == -1)
+		return -1;
 
 	/* XXX: If we gave a crap, we'd validate the returned key per the
 	 * requirements of RFC6455 sec. 4.1, but we don't.
@@ -521,6 +523,10 @@ dumb_connect(struct websocket *ws, char *host, char *port)
 
 	// XXX: for now we're lazy and only try the first addrinfo
 	if (connect(s, res->ai_addr, res->ai_addrlen))
+		return -3;
+
+	// Set to non blocking
+	if (fcntl(s, F_SETFL, O_NONBLOCK) == -1)
 		return -3;
 
 	ws->s = s;
