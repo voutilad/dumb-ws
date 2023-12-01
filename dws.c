@@ -66,6 +66,7 @@ static int rng_initialized = 0;
 static const char B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 static ssize_t ws_read(struct websocket *, void *, size_t);
+static ssize_t ws_read_all(struct websocket *, void *, size_t);
 static ssize_t ws_read_txt(struct websocket *, void *, size_t);
 
 
@@ -173,6 +174,52 @@ dumb_mask(uint8_t mask[4])
  */
 static ssize_t
 ws_read(struct websocket *ws, void *buf, size_t buflen)
+{
+	ssize_t _buflen, sz, len = 0;
+	char *_buf;
+
+	if (buflen > INT_MAX)
+		crap(1, "ws_read: buflen too large");
+
+	_buf = (char*) buf;
+	_buflen = (ssize_t) buflen;
+
+	while (_buflen > 0) {
+		if (ws->ctx) {
+			sz = tls_read(ws->ctx, _buf, _buflen);
+			if (sz == TLS_WANT_POLLIN || sz == TLS_WANT_POLLOUT) {
+				if (len == 0)
+					return DWS_WANT_POLL;
+				break;
+			} else if (sz == -1)
+				return -1;
+		} else {
+			sz = read(ws->s, _buf, _buflen);
+			if (sz == -1 && errno == EAGAIN) {
+				if (len == 0)
+					return DWS_WANT_POLL;
+				break;
+			}
+			else if (sz == -1)
+				return -1;
+		}
+
+		_buf += sz;
+		_buflen -= sz;
+		len += sz;
+	}
+
+	// TODO: figure out how we want to handle errors...
+	// win32 spits out a different error than posix systems, btw.
+
+	return len;
+}
+
+/*
+ * Read at `buflen` bytes into the given buffer, busy polling as needed.
+ */
+static ssize_t
+ws_read_all(struct websocket *ws, void *buf, size_t buflen)
 {
 	ssize_t _buflen, sz, len = 0;
 	char *_buf;
@@ -642,8 +689,8 @@ dumb_recv(struct websocket *ws, void *buf, size_t buflen)
 
 	// Read first 2 bytes to figure out the framing details.
 	n = ws_read(ws, frame, 2);
-	if (n < 2)
-		return -1;
+	if (n < 0)
+		return n;
 
 	// Now to validate the frame...
 	if (!(frame[0] & 0x80)) {
@@ -655,7 +702,7 @@ dumb_recv(struct websocket *ws, void *buf, size_t buflen)
 	if (payload_len == 126) {
 		// Need the next two bytes to get the actual payload size, which
 		// arrives in network byte order.
-		n = ws_read(ws, frame + 2, 2);
+		n = ws_read_all(ws, frame + 2, 2);
 		if (n < 2)
 			return -1;
 		payload_len = frame[2] << 8;
@@ -667,7 +714,7 @@ dumb_recv(struct websocket *ws, void *buf, size_t buflen)
 	payload_len = MIN(payload_len, buflen);
 	if (payload_len == 0)
 		return payload_len;
-	n = ws_read(ws, buf, (size_t) payload_len);
+	n = ws_read_all(ws, buf, (size_t) payload_len);
 	if (n < payload_len)
 		return -1;
 
@@ -708,8 +755,8 @@ dumb_ping(struct websocket *ws)
 	memset(frame, 0, sizeof(frame));
 
 	// Read first 2 bytes.
-	len = ws_read(ws, frame, 2);
-	if (len != 2)
+	len = ws_read_all(ws, frame, 2);
+	if (len < 0)
 		return -2;
 
 	// We should have a PONG reply.
@@ -722,7 +769,7 @@ dumb_ping(struct websocket *ws)
 
 	// Dump the rest of the data on the floor.
 	if (payload_len > 0) {
-		len = ws_read(ws, frame + 2, MIN(payload_len, sizeof(frame) - 2));
+		len = ws_read_all(ws, frame + 2, MIN(payload_len, sizeof(frame) - 2));
 		if (len < 1)
 			return -3;
 	}
@@ -775,10 +822,12 @@ dumb_close(struct websocket *ws)
 
 	// A valid RFC6455 websocket server MUST send a Close frame in response
 	// Read first 2 bytes.
-    len = ws_read(ws, frame, 2);
+    len = ws_read_all(ws, frame, 2);
 	if (len != 2)
 		return -2;
 
+	// If we don't have a CLOSE frame...someone screwed up before calling
+	// dumb_close and there's still unread data!
 	if (frame[0] != (0x80 + CLOSE))
 		return -3;
 
@@ -788,9 +837,9 @@ dumb_close(struct websocket *ws)
 
 	// Dump the rest of the data on the floor.
 	if (payload_len > 0) {
-		len = ws_read(ws, frame + 2, MIN(payload_len, sizeof(frame) - 2));
+		len = ws_read_all(ws, frame + 2, MIN(payload_len, sizeof(frame) - 2));
 		if (len < 1)
-			return -3;
+			return -4;
 	}
 
 	// Now close/shutdown our socket.

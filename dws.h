@@ -52,6 +52,8 @@ struct websocket {
 	// TODO: add basic auth details?
 };
 
+#define DWS_WANT_POLL -2
+
 int dumb_connect(struct websocket *ws, char*, char*);
 int dumb_connect_tls(struct websocket *ws, char*, char*, int);
 int dumb_handshake(struct websocket *s, const char*, const char*, const char*);

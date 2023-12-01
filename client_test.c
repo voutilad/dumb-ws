@@ -82,7 +82,10 @@ main(int argc, char **argv)
 	printf("sent " SSIZE_T_PARAM " bytes (header + payload)\n", len);
 
 	memset(buf, 0, sizeof(buf));
-	len = dumb_recv(&ws, buf, sizeof(buf));
+	len = 0;
+	do {
+		len = dumb_recv(&ws, buf, sizeof(buf));
+	} while (len == DWS_WANT_POLL);
 	snprintf(out, sizeof(out), "%s", buf);
 	printf("received payload of " SSIZE_T_PARAM " bytes:\n---\n%s\n---\n",
 		len, out);
@@ -93,7 +96,9 @@ main(int argc, char **argv)
 	printf("sent " SSIZE_T_PARAM " bytes (header + payload)\n", len);
 
 	memset(buf, 0, sizeof(buf));
-	len = dumb_recv(&ws, buf, sizeof(buf));
+	do {
+		len = dumb_recv(&ws, buf, sizeof(buf));
+	} while (len == DWS_WANT_POLL);
 	snprintf(out, sizeof(out), "%s", buf);
 	printf("received payload of " SSIZE_T_PARAM " bytes:\n---\n%s\n---\n",
 		len, out);
