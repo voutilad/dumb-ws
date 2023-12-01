@@ -288,7 +288,6 @@ ws_write(struct websocket *ws, const void *buf, size_t buflen)
 				crap(1, "tls_write: %s", tls_error(ws->ctx));
 		} else {
 			sz = write(ws->s, _buf, (size_t) _buflen);
-			printf("%s: wrote %zd bytes\n", __func__, sz);
 			if (sz == -1 && errno == EAGAIN)
 				continue;
 			else if (sz == -1)
