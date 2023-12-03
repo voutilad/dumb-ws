@@ -57,7 +57,7 @@ main(int argc, char **argv)
 			use_tls = 1;
 			break;
 		default:
-			printf("client_test usage: [-t] [-h host] [-p port]");
+			printf("client_test usage: [-t] [-h host] [-p port]\n");
 			exit(1);
 		}
 	}
