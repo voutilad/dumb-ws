@@ -1,6 +1,6 @@
 use std::net::TcpListener;
 use tungstenite::Message;
-use tungstenite::server::accept;
+use tungstenite::accept;
 
 fn main() {
     let server = TcpListener::bind("127.0.0.1:8000").unwrap();
@@ -12,15 +12,16 @@ fn main() {
         let mut websocket = accept(socket).unwrap();
 
         loop {
-            match websocket.read_message().unwrap() {
+            match websocket.read().unwrap() {
                 msg @ Message::Binary(_) => {
                     println!("got: {}", msg);
-                    websocket.write_message(msg).unwrap();
+                    websocket.write(msg).unwrap();
+                    websocket.flush().unwrap();
                 },
                 Message::Close(_) => {
                     println!("connection closed");
                     match websocket.close(None) {
-                        Ok(_) => websocket.write_pending().unwrap(),
+                        Ok(_) => websocket.flush().unwrap(),
                         Err(_) => {}
                     }
                     break;
