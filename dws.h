@@ -32,6 +32,7 @@
  * Well Text frames require utf-8 support, which is hella gross.
  */
 enum ws_opcode {
+	TEXT	= 0x1,
 	BINARY	= 0x2,
 	CLOSE	= 0x8,
 	PING	= 0x9,
@@ -52,11 +53,14 @@ struct websocket {
 	// TODO: add basic auth details?
 };
 
-#define DWS_WANT_POLL -2
+#define DWS_WANT_POLL	-2
+#define DWS_WANT_PONG	-3
+#define DWS_SHUTDOWN	-4
 
-int dumb_connect(struct websocket *ws, char*, char*);
-int dumb_connect_tls(struct websocket *ws, char*, char*, int);
-int dumb_handshake(struct websocket *s, const char*, const char*, const char*);
+int dumb_connect(struct websocket *ws, const char*, const char*);
+int dumb_connect_tls(struct websocket *ws, const char*, const char*, int);
+int dumb_handshake(struct websocket *s, const char*, int, const char*,
+				   const char*);
 
 ssize_t dumb_send(struct websocket *ws, const void*, size_t);
 ssize_t dumb_recv(struct websocket *ws, void*, size_t);

@@ -54,9 +54,9 @@ static const char server_handshake[] = "HTTP/1.1 101 Switching Protocols";
 
 static const char HANDSHAKE_TEMPLATE[] =
     "GET %s HTTP/1.1\r\n"
-    "Host: %s\r\n"
+    "Host: %s:%d\r\n"
     "Upgrade: websocket\r\n"
-    "Connection: upgrade\r\n"
+    "Connection: Upgrade\r\n"
     "Sec-WebSocket-Key: %s\r\n"
     "Sec-WebSocket-Protocol: %s\r\n"
     "Sec-WebSocket-Version: 13\r\n\r\n";
@@ -68,6 +68,7 @@ static const char B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0
 static ssize_t ws_read(struct websocket *, void *, size_t);
 static ssize_t ws_read_all(struct websocket *, void *, size_t);
 static ssize_t ws_read_txt(struct websocket *, void *, size_t);
+static void ws_shutdown(struct websocket *);
 
 
 static void __attribute__((noreturn))
@@ -200,8 +201,11 @@ ws_read(struct websocket *ws, void *buf, size_t buflen)
 					return DWS_WANT_POLL;
 				break;
 			}
-			else if (sz == -1)
+			else if (sz == -1) {
+				// TODO: check some common errno's and return something better.
+				printf("%s: err %s\n", __func__, strerror(errno));
 				return -1;
+			}
 		}
 
 		_buf += sz;
@@ -225,7 +229,9 @@ ws_read_all(struct websocket *ws, void *buf, size_t buflen)
 	char *_buf;
 
 	if (buflen > INT_MAX)
-		crap(1, "ws_read: buflen too large");
+		crap(1, "%s: buflen too large", __func__);
+	if (buflen == 0)
+		crap(1, "%s: buflen == 0?!", __func__);
 
 	_buf = (char*) buf;
 	_buflen = (ssize_t) buflen;
@@ -489,8 +495,8 @@ dumb_frame(uint8_t *frame, const uint8_t *data, size_t len)
  *  fatal error otherwise.
  */
 int
-dumb_handshake(struct websocket *ws, const char *host, const char *path,
-               const char *proto)
+dumb_handshake(struct websocket *ws, const char *host, int port,
+               const char *path, const char *proto)
 {
 	int len, ret = 0;
 	char key[25], buf[HANDSHAKE_BUF_SIZE];
@@ -500,14 +506,14 @@ dumb_handshake(struct websocket *ws, const char *host, const char *path,
 	dumb_key(key);
 
 	len = snprintf(buf, sizeof(buf), HANDSHAKE_TEMPLATE,
-				   path, host, key, proto);
+				   path, host, port, key, proto);
 	if (len < 1)
 		return -1;
 
 	// Send our upgrade request.
 	sz = ws_write(ws, buf, len);
 	if (sz != len)
-		crap(1, "dumb_handshake");
+		crap(1, "dumb_handshake: ws_write");
 
 	memset(buf, 0, sizeof(buf));
 	len = ws_read_txt(ws, buf, sizeof(buf));
@@ -517,8 +523,10 @@ dumb_handshake(struct websocket *ws, const char *host, const char *path,
 	/* XXX: If we gave a crap, we'd validate the returned key per the
 	 * requirements of RFC6455 sec. 4.1, but we don't.
 	 */
-	if (memcmp(server_handshake, buf, sizeof(server_handshake) - 1))
-		ret = -2;
+	if (memcmp(server_handshake, buf, sizeof(server_handshake) - 1)) {
+        printf("%s: bad handshake:\n%s\n", __func__, buf);
+        ret = -2;
+    }
 
 	return ret;
 }
@@ -541,7 +549,7 @@ dumb_handshake(struct websocket *ws, const char *host, const char *path,
  * -3 if it failed to connect(2).
  */
 int
-dumb_connect(struct websocket *ws, char *host, char *port)
+dumb_connect(struct websocket *ws, const char *host, const char *port)
 {
 	int s;
 	struct addrinfo hints, *res;
@@ -576,6 +584,7 @@ dumb_connect(struct websocket *ws, char *host, char *port)
 	if (fcntl(s, F_SETFL, O_NONBLOCK) == -1)
 		return -3;
 
+    // TODO: store host, port etc. on the Websocket object
 	ws->s = s;
 	ws->ctx = NULL;
 	memset(&ws->addr, 0, sizeof(ws->addr));
@@ -598,7 +607,8 @@ dumb_connect(struct websocket *ws, char *host, char *port)
  *  insecure: set to non-zero to disable cert verification
  */
 int
-dumb_connect_tls(struct websocket *ws, char *host, char *port, int insecure)
+dumb_connect_tls(struct websocket *ws, const char *host, const char *port,
+				 int insecure)
 {
 	int ret;
 	ret = dumb_connect(ws, host, port);
@@ -678,7 +688,7 @@ dumb_send(struct websocket *ws, const void *payload, size_t len)
  *
  * Returns:
  *  the number of bytes received in the payload (not including frame headers),
- * -1 on failure to read(2) data,
+ * -1 on failure to read(2) data, DWS_WANT_POLL or DWS_SHUTDOWN.
  */
 ssize_t
 dumb_recv(struct websocket *ws, void *buf, size_t buflen)
@@ -695,10 +705,30 @@ dumb_recv(struct websocket *ws, void *buf, size_t buflen)
 	// Now to validate the frame...
 	if (!(frame[0] & 0x80)) {
 		// XXX: We don't currently fragmentation
-		crap(1, "dumb_recv: fragmentation unsupported");
+		crap(1, "%s: fragmentation unsupported", __func__);
 	}
 
-	payload_len = frame[1] & 0x7F;
+	switch (frame[0] & 0x0F) {
+	case TEXT:
+		crap(1, "%s: unsupported TEXT frame!", __func__);
+		// unreached
+	case CLOSE:
+		// Unexpected, but possible if the server hates us apparently!
+		ws_shutdown(ws);
+		return DWS_SHUTDOWN;
+	case PING:
+		// Also unexpected! WTF.
+		return DWS_WANT_PONG;
+	case PONG:
+		// This...should not happen, but process the message.
+		// Fallthrough
+	case BINARY:
+		// Fallthrough
+	default:
+		// Ok. We have something we *think* we can work with!
+		payload_len = frame[1] & 0x7F;
+	}
+
 	if (payload_len == 126) {
 		// Need the next two bytes to get the actual payload size, which
 		// arrives in network byte order.
@@ -710,10 +740,11 @@ dumb_recv(struct websocket *ws, void *buf, size_t buflen)
 	} else if (payload_len > 126)
 		crap(1, "%s: unsupported payload size", __func__);
 
-	// We can now read the the payload.
+	// We can now read the the payload, if there is one.
 	payload_len = MIN(payload_len, buflen);
 	if (payload_len == 0)
-		return payload_len;
+		return 0;
+
 	n = ws_read_all(ws, buf, (size_t) payload_len);
 	if (n < payload_len)
 		return -1;
@@ -783,6 +814,20 @@ dumb_ping(struct websocket *ws)
 #define HOW SHUT_RDWR
 #endif
 
+static void
+ws_shutdown(struct websocket *ws)
+{
+	// Now close/shutdown our socket.
+	if (ws->ctx)
+		tls_close(ws->ctx);
+
+	// Don't care if shutdown fails. Other side may have closed some things first.
+	shutdown(ws->s, HOW);
+
+	ws->ctx = NULL; // XXX does this leak anything?
+	ws->s = -1;
+}
+
 /*
  * dumb_close
  *
@@ -842,15 +887,7 @@ dumb_close(struct websocket *ws)
 			return -4;
 	}
 
-	// Now close/shutdown our socket.
-	if (ws->ctx)
-		tls_close(ws->ctx);
-
-	// Don't care if shutdown fails. Other side may have closed some things first.
-	shutdown(ws->s, HOW);
-
-	ws->ctx = NULL; // XXX does this leak anything?
-	ws->s = -1;
+	ws_shutdown(ws);
 
 	return 0;
 }
