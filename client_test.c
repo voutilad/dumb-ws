@@ -40,8 +40,9 @@ main(int argc, char **argv)
 {
 	int ch;
 	int use_tls = 0;
+	uint16_t port = 8000;
 	ssize_t len;
-	char *host = "localhost", *port = "8000";
+	char *host = "localhost";
 	char out[1024];
 	struct websocket ws;
 
@@ -51,7 +52,7 @@ main(int argc, char **argv)
 			host = optarg;
 			break;
 		case 'p':
-			port = optarg;
+			port = atoi(optarg);
 			break;
 		case 't':
 			use_tls = 1;
@@ -62,7 +63,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	printf("connecting to %s:%s\n", host, port);
+	printf("connecting to %s:%u\n", host, port);
 
 	memset(&ws, 0, sizeof(struct websocket));
 	if (use_tls)
@@ -70,7 +71,7 @@ main(int argc, char **argv)
 	else
 		assert(0 == dumb_connect(&ws, host, port));
 
-	assert(0 == dumb_handshake(&ws, host, "/", "dumb-ws"));
+	assert(0 == dumb_handshake(&ws, "/", "dumb-ws"));
 	printf("handshake complete\n");
 
 	assert(0 == dumb_ping(&ws));

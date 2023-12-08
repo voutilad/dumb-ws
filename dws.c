@@ -495,8 +495,7 @@ dumb_frame(uint8_t *frame, const uint8_t *data, size_t len)
  *  fatal error otherwise.
  */
 int
-dumb_handshake(struct websocket *ws, const char *host, int port,
-               const char *path, const char *proto)
+dumb_handshake(struct websocket *ws, const char *path, const char *proto)
 {
 	int len, ret = 0;
 	char key[25], buf[HANDSHAKE_BUF_SIZE];
@@ -506,7 +505,7 @@ dumb_handshake(struct websocket *ws, const char *host, int port,
 	dumb_key(key);
 
 	len = snprintf(buf, sizeof(buf), HANDSHAKE_TEMPLATE,
-				   path, host, port, key, proto);
+				   path, ws->host, ws->port, key, proto);
 	if (len < 1)
 		return -1;
 
@@ -549,9 +548,10 @@ dumb_handshake(struct websocket *ws, const char *host, int port,
  * -3 if it failed to connect(2).
  */
 int
-dumb_connect(struct websocket *ws, const char *host, const char *port)
+dumb_connect(struct websocket *ws, const char *host, uint16_t port)
 {
 	int s;
+	char port_buf[8];
 	struct addrinfo hints, *res;
 
 #ifdef _WIN32
@@ -572,8 +572,9 @@ dumb_connect(struct websocket *ws, const char *host, const char *port)
 	hints.ai_protocol = 0;
 	hints.ai_flags = AI_CANONNAME;
 
-
-	if (getaddrinfo(host, port, &hints, &res))
+	memset(port_buf, 0, sizeof(port_buf));
+	snprintf(port_buf, sizeof(port_buf), "%d", port);
+	if (getaddrinfo(host, port_buf, &hints, &res))
 		return -2;
 
 	// XXX: for now we're lazy and only try the first addrinfo
@@ -584,7 +585,9 @@ dumb_connect(struct websocket *ws, const char *host, const char *port)
 	if (fcntl(s, F_SETFL, O_NONBLOCK) == -1)
 		return -3;
 
-    // TODO: store host, port etc. on the Websocket object
+	// Store some state
+	ws->port = port;
+	ws->host = strdup(host);
 	ws->s = s;
 	ws->ctx = NULL;
 	memset(&ws->addr, 0, sizeof(ws->addr));
@@ -607,7 +610,7 @@ dumb_connect(struct websocket *ws, const char *host, const char *port)
  *  insecure: set to non-zero to disable cert verification
  */
 int
-dumb_connect_tls(struct websocket *ws, const char *host, const char *port,
+dumb_connect_tls(struct websocket *ws, const char *host, uint16_t port,
 				 int insecure)
 {
 	int ret;
@@ -826,6 +829,11 @@ ws_shutdown(struct websocket *ws)
 
 	ws->ctx = NULL; // XXX does this leak anything?
 	ws->s = -1;
+
+	// Not sure if it make sense to "free" things here or not.
+	free(ws->host);
+	ws->host = NULL;
+	ws->port = 0;
 }
 
 /*
