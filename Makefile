@@ -15,7 +15,8 @@ DWS_OBJ = dws.o
 DWS_CLIENT_TEST = client_test
 
 KEYGEN = openssl req -x509 -newkey rsa:4096 -keyout key.pem \
-		-out cert.pem -days 30 -nodes -subj '/CN=localhost'
+		-out cert.pem -days 30 -nodes -subj "/CN=localhost" \
+		-addext "subjectAltName = DNS:localhost, IP: 127.0.0.1"
 
 .PHONY:	all clean
 
