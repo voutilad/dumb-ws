@@ -5,3 +5,4 @@ client_test
 *.pem
 *.core
 client_test.exe
+*dSYM/
