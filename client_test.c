@@ -104,11 +104,11 @@ main(int argc, char **argv)
 	printf("received payload of " SSIZE_T_PARAM " bytes:\n---\n%s\n---\n",
 		len, out);
 
-	assert(0 == dumb_close(&ws));
+	assert(DWS_OK == dumb_close(&ws));
 	printf("sent a CLOSE frame!\n");
 
 	// Our socket should be closed now
-	assert(-1 == dumb_recv(&ws, buf, sizeof(buf)));
+	assert(DWS_ERR_READ == dumb_recv(&ws, buf, sizeof(buf)));
 	printf("socket looks closed!\n");
 
 	return 0;

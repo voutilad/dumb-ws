@@ -58,9 +58,28 @@ struct websocket {
 	// TODO: add basic auth details?
 };
 
+/*
+ * Possible non-error responses from dumb_recv() based on the state of the
+ * socket or the next websocket control message (e.g. PING).
+ */
 #define DWS_WANT_POLL	-2
 #define DWS_WANT_PONG	-3
 #define DWS_SHUTDOWN	-4
+
+/*
+ * Simplistic error code approach using define's.
+ */
+#define DWS_OK			0
+#define DWS_ERR_CONN_CREATE	-1
+#define DWS_ERR_CONN_RESOLVE	-2
+#define DWS_ERR_CONN_CONNECT	-3
+#define DWS_ERR_MALLOC		-4
+#define DWS_ERR_READ		-5
+#define DWS_ERR_WRITE		-6
+#define DWS_ERR_INVALID		-7
+#define DWS_ERR_HANDSHAKE_BUF	-8
+#define DWS_ERR_HANDSHAKE_RES	-9
+#define DWS_ERR_TOO_LARGE	-10
 
 int dumb_connect(struct websocket *ws, const char*, uint16_t);
 int dumb_connect_tls(struct websocket *ws, const char*, uint16_t, int);
