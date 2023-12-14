@@ -88,15 +88,29 @@ crap(int code, const char *fmt, ...)
 static uint32_t
 portable_random(void)
 {
-#ifdef _WIN32
+#if _WIN32 || _WIN64
 	errno_t err;
 	uint32_t r = 0;
 	err = rand_s(&r);
 	if (err != 0)
 		crap(err, "%s: rand_s failed", __func__);
 	return r;
+#elif (__OpenBSD__ || __FreeBSD__ || __NetBSD__ || __APPLE__) \
+	|| (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 36)
+	return arc4random();
 #else
-	return random();
+	static long r = 0;
+	uint32_t ret = 0;
+
+	if (r == 0) {
+		r = random();
+		ret = (uint32_t)(r & 0xFFFFFFFF);
+	} else {
+		r = r >> 32;
+		ret = (uint32_t)r;
+		r = 0;
+	}
+	return ret;
 #endif
 }
 static void
@@ -112,9 +126,9 @@ init_rng(void)
 	len = read(fd, state, sizeof(state));
 	if (len < (ssize_t) sizeof(state))
 		crap(1, "%s: failed to fill state buffer", __func__);
+	close(fd);
 
 	initstate(time(NULL), state, sizeof(state));
-	close(fd);
 #endif
 	rng_initialized = 1;
 }
