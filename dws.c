@@ -360,7 +360,7 @@ ws_write(struct websocket *ws, const void *buf, size_t buflen)
 			else if (sz == -1)
 				return -1;
 		} else {
-			sz = write(ws->s, _buf, (size_t) _buflen);
+			sz = send(ws->s, _buf, (size_t) _buflen, 0);
 			if (sz == -1 && errno == EAGAIN)
 				continue;
 			else if (sz == -1)
@@ -788,8 +788,8 @@ dumb_recv(struct websocket *ws, void *buf, size_t buflen)
  *
  * Returns:
  *  0 on success,
- *  DWS_ERR_WRITE on failure during write(2),
- *  DWS_ERR_READ on failure to receive(2) the response,
+ *  DWS_ERR_WRITE on failure during send(2),
+ *  DWS_ERR_READ on failure to recv(2) the response,
  *  DWS_ERR_INVALID on the response being invalid (i.e. not a PONG)
  */
 int
