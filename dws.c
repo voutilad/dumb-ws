@@ -209,7 +209,7 @@ ws_read(struct websocket *ws, void *buf, size_t buflen)
 			} else if (sz == -1)
 				return -1;
 		} else {
-			sz = read(ws->s, _buf, _buflen);
+			sz = recv(ws->s, _buf, _buflen, 0);
 			if (sz == -1 && errno == EAGAIN) {
 				if (len == 0)
 					return DWS_WANT_POLL;
@@ -218,6 +218,10 @@ ws_read(struct websocket *ws, void *buf, size_t buflen)
 			else if (sz == -1) {
 				// TODO: check some common errno's and return
 				// something better.
+				return -1;
+			} else if (sz == 0) {
+				// Disconnect/EOF?
+				// TODO!
 				return -1;
 			}
 		}
@@ -258,10 +262,12 @@ ws_read_all(struct websocket *ws, void *buf, size_t buflen)
 			else if (sz == -1)
 				return -1;
 		} else {
-			sz = read(ws->s, _buf, _buflen);
+			sz = recv(ws->s, _buf, _buflen, 0);
 			if (sz == -1 && errno == EAGAIN)
 				continue;
 			else if (sz == -1)
+				return -1;
+			else if (sz == 0) // TODO: disconnect!
 				return -1;
 		}
 
@@ -299,11 +305,13 @@ ws_read_txt(struct websocket *ws, void *buf, size_t buflen)
 			else if (sz == -1)
 				return -1;
 		} else {
-			sz = read(ws->s, _buf, _buflen);
+			sz = recv(ws->s, _buf, _buflen, 0);
 			if (sz == -1 && errno == EAGAIN)
 				continue;
 			else if (sz == -1)
 				return -1;
+			else if (sz == 0)
+				return -1; // TODO: Disconnect!
 		}
 
 		_buf += sz;
@@ -702,7 +710,7 @@ dumb_send(struct websocket *ws, const void *payload, size_t len)
  *
  * Returns:
  *  the number of bytes received in the payload (not including frame headers),
- *  DWS_ERR_READ on failure to read(2) data, DWS_WANT_POLL or DWS_SHUTDOWN.
+ *  DWS_ERR_READ on failure to recv(2) data, DWS_WANT_POLL or DWS_SHUTDOWN.
  */
 ssize_t
 dumb_recv(struct websocket *ws, void *buf, size_t buflen)
@@ -867,7 +875,7 @@ ws_shutdown(struct websocket *ws)
  * Returns:
  *  0 on success,
  *  DWS_ERR_WRITE on failure to send(2) the close frame,
- *  DWS_ERR_READ on failure to read(2) a response,
+ *  DWS_ERR_READ on failure to recv(2) a response,
  *  DWS_ERR_INVALID on a response being invalid (i.e. not a CLOSE),
  */
 int
